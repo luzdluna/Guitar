@@ -232,6 +232,57 @@
         </spacer>
        </item>
        <item>
+        <widget class="MyToolButton" name="toolButton_status">
+         <property name="minimumSize">
+          <size>
+           <width>64</width>
+           <height>48</height>
+          </size>
+         </property>
+         <property name="maximumSize">
+          <size>
+           <width>16777215</width>
+           <height>48</height>
+          </size>
+         </property>
+         <property name="focusPolicy">
+          <enum>Qt::NoFocus</enum>
+         </property>
+         <property name="text">
+          <string>Status</string>
+         </property>
+         <property name="icon">
+          <iconset resource="resources/resources.qrc">
+           <normaloff>:/image/status.svg</normaloff>:/image/status.svg</iconset>
+         </property>
+         <property name="iconSize">
+          <size>
+           <width>24</width>
+           <height>24</height>
+          </size>
+         </property>
+         <property name="toolButtonStyle">
+          <enum>Qt::ToolButtonTextUnderIcon</enum>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <spacer name="horizontalSpacer_7">
+         <property name="orientation">
+          <enum>Qt::Horizontal</enum>
+         </property>
+         <property name="sizeType">
+          <enum>QSizePolicy::Fixed</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>8</width>
+           <height>20</height>
+          </size>
+         </property>
+        </spacer>
+       </item>
+       <item>
         <widget class="MyToolButton" name="toolButton_terminal">
          <property name="minimumSize">
           <size>
@@ -461,101 +512,156 @@
       <property name="childrenCollapsible">
        <bool>false</bool>
       </property>
-      <widget class="QWidget" name="layoutWidget">
-       <layout class="QVBoxLayout" name="verticalLayout_4">
-        <item>
-         <widget class="RepositoriesTreeWidget" name="treeWidget_repos">
-          <property name="contextMenuPolicy">
-           <enum>Qt::CustomContextMenu</enum>
-          </property>
-          <property name="acceptDrops">
-           <bool>true</bool>
-          </property>
-          <property name="editTriggers">
-           <set>QAbstractItemView::EditKeyPressed|QAbstractItemView::SelectedClicked</set>
-          </property>
-          <property name="dragEnabled">
-           <bool>true</bool>
-          </property>
-          <property name="dragDropMode">
-           <enum>QAbstractItemView::InternalMove</enum>
-          </property>
-          <property name="defaultDropAction">
-           <enum>Qt::MoveAction</enum>
-          </property>
-          <property name="verticalScrollMode">
-           <enum>QAbstractItemView::ScrollPerPixel</enum>
-          </property>
-          <property name="rootIsDecorated">
-           <bool>false</bool>
-          </property>
-          <attribute name="headerVisible">
-           <bool>false</bool>
-          </attribute>
-          <column>
+      <widget class="QStackedWidget" name="stackedWidget_leftpanel">
+       <property name="currentIndex">
+        <number>0</number>
+       </property>
+       <widget class="QWidget" name="page_repos">
+        <layout class="QVBoxLayout" name="verticalLayout_4">
+         <property name="leftMargin">
+          <number>0</number>
+         </property>
+         <property name="topMargin">
+          <number>0</number>
+         </property>
+         <property name="rightMargin">
+          <number>0</number>
+         </property>
+         <property name="bottomMargin">
+          <number>0</number>
+         </property>
+         <item>
+          <widget class="RepositoriesTreeWidget" name="treeWidget_repos">
+           <property name="contextMenuPolicy">
+            <enum>Qt::CustomContextMenu</enum>
+           </property>
+           <property name="acceptDrops">
+            <bool>true</bool>
+           </property>
+           <property name="editTriggers">
+            <set>QAbstractItemView::EditKeyPressed|QAbstractItemView::SelectedClicked</set>
+           </property>
+           <property name="dragEnabled">
+            <bool>true</bool>
+           </property>
+           <property name="dragDropMode">
+            <enum>QAbstractItemView::InternalMove</enum>
+           </property>
+           <property name="defaultDropAction">
+            <enum>Qt::MoveAction</enum>
+           </property>
+           <property name="verticalScrollMode">
+            <enum>QAbstractItemView::ScrollPerPixel</enum>
+           </property>
+           <property name="rootIsDecorated">
+            <bool>false</bool>
+           </property>
+           <attribute name="headerVisible">
+            <bool>false</bool>
+           </attribute>
+           <column>
+            <property name="text">
+             <string notr="true">1</string>
+            </property>
+           </column>
+          </widget>
+         </item>
+         <item>
+          <widget class="QFrame" name="frame_5">
+           <property name="frameShape">
+            <enum>QFrame::NoFrame</enum>
+           </property>
+           <property name="frameShadow">
+            <enum>QFrame::Plain</enum>
+           </property>
+           <layout class="QHBoxLayout" name="horizontalLayout_4">
+            <property name="spacing">
+             <number>2</number>
+            </property>
+            <property name="leftMargin">
+             <number>0</number>
+            </property>
+            <property name="topMargin">
+             <number>0</number>
+            </property>
+            <property name="rightMargin">
+             <number>0</number>
+            </property>
+            <property name="bottomMargin">
+             <number>0</number>
+            </property>
+            <item>
+             <widget class="QLineEdit" name="lineEdit_filter">
+              <property name="focusPolicy">
+               <enum>Qt::ClickFocus</enum>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="ClearButton" name="toolButton_erase_filter">
+              <property name="minimumSize">
+               <size>
+                <width>22</width>
+                <height>17</height>
+               </size>
+              </property>
+              <property name="focusPolicy">
+               <enum>Qt::NoFocus</enum>
+              </property>
+              <property name="text">
+               <string/>
+              </property>
+              <property name="iconSize">
+               <size>
+                <width>20</width>
+                <height>15</height>
+               </size>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </widget>
+         </item>
+        </layout>
+       </widget>
+       <widget class="QWidget" name="page_collapsed">
+        <layout class="QVBoxLayout" name="verticalLayout_9">
+         <property name="leftMargin">
+          <number>0</number>
+         </property>
+         <property name="topMargin">
+          <number>0</number>
+         </property>
+         <property name="rightMargin">
+          <number>0</number>
+         </property>
+         <property name="bottomMargin">
+          <number>0</number>
+         </property>
+         <item>
+          <widget class="QToolButton" name="toolButton">
+           <property name="minimumSize">
+            <size>
+             <width>24</width>
+             <height>24</height>
+            </size>
+           </property>
+           <property name="maximumSize">
+            <size>
+             <width>24</width>
+             <height>24</height>
+            </size>
+           </property>
            <property name="text">
-            <string notr="true">1</string>
+            <string>...</string>
            </property>
-          </column>
-         </widget>
-        </item>
-        <item>
-         <widget class="QFrame" name="frame_5">
-          <property name="frameShape">
-           <enum>QFrame::NoFrame</enum>
-          </property>
-          <property name="frameShadow">
-           <enum>QFrame::Plain</enum>
-          </property>
-          <layout class="QHBoxLayout" name="horizontalLayout_4">
-           <property name="spacing">
-            <number>2</number>
-           </property>
-           <property name="leftMargin">
-            <number>0</number>
-           </property>
-           <property name="topMargin">
-            <number>0</number>
-           </property>
-           <property name="rightMargin">
-            <number>0</number>
-           </property>
-           <property name="bottomMargin">
-            <number>0</number>
-           </property>
-           <item>
-            <widget class="QLineEdit" name="lineEdit_filter">
-             <property name="focusPolicy">
-              <enum>Qt::ClickFocus</enum>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <widget class="ClearButton" name="toolButton_erase_filter">
-             <property name="minimumSize">
-              <size>
-               <width>22</width>
-               <height>17</height>
-              </size>
-             </property>
-             <property name="focusPolicy">
-              <enum>Qt::NoFocus</enum>
-             </property>
-             <property name="text">
-              <string/>
-             </property>
-             <property name="iconSize">
-              <size>
-               <width>20</width>
-               <height>15</height>
-              </size>
-             </property>
-            </widget>
-           </item>
-          </layout>
-         </widget>
-        </item>
-       </layout>
+          </widget>
+         </item>
+         <item>
+          <widget class="QWidget" name="widget" native="true"/>
+         </item>
+        </layout>
+       </widget>
       </widget>
       <widget class="QSplitter" name="splitter_h">
        <property name="orientation">
@@ -596,7 +702,7 @@
          <bool>false</bool>
         </attribute>
        </widget>
-       <widget class="QStackedWidget" name="stackedWidget">
+       <widget class="QStackedWidget" name="stackedWidget_filelist">
         <property name="currentIndex">
          <number>0</number>
         </property>
@@ -618,7 +724,7 @@
            <number>0</number>
           </property>
           <item>
-           <widget class="QListWidget" name="listWidget_unstaged">
+           <widget class="FilesListWidget" name="listWidget_unstaged">
             <property name="sizePolicy">
              <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
               <horstretch>0</horstretch>
@@ -636,7 +742,7 @@
           <item>
            <widget class="QFrame" name="frame_2">
             <property name="frameShape">
-             <enum>QFrame::StyledPanel</enum>
+             <enum>QFrame::NoFrame</enum>
             </property>
             <property name="frameShadow">
              <enum>QFrame::Raised</enum>
@@ -819,7 +925,7 @@
            </widget>
           </item>
           <item>
-           <widget class="QListWidget" name="listWidget_staged">
+           <widget class="FilesListWidget" name="listWidget_staged">
             <property name="sizePolicy">
              <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
               <horstretch>0</horstretch>
@@ -851,7 +957,7 @@
            <number>0</number>
           </property>
           <item>
-           <widget class="QListWidget" name="listWidget_files">
+           <widget class="FilesListWidget" name="listWidget_files">
             <property name="contextMenuPolicy">
              <enum>Qt::CustomContextMenu</enum>
             </property>
@@ -860,7 +966,7 @@
          </layout>
         </widget>
        </widget>
-       <widget class="QFrame" name="frame_6">
+       <widget class="QFrame" name="frame_diff_view">
         <property name="frameShape">
          <enum>QFrame::Panel</enum>
         </property>
@@ -909,7 +1015,7 @@
      <x>0</x>
      <y>0</y>
      <width>848</width>
-     <height>24</height>
+     <height>21</height>
     </rect>
    </property>
    <widget class="QMenu" name="menu_File">
@@ -939,6 +1045,9 @@
     <addaction name="action_set_config_user"/>
     <addaction name="action_set_gpg_signing"/>
     <addaction name="separator"/>
+    <addaction name="action_find"/>
+    <addaction name="action_find_next"/>
+    <addaction name="separator"/>
     <addaction name="action_edit_settings"/>
    </widget>
    <widget class="QMenu" name="menu_Help">
@@ -963,11 +1072,15 @@
      </property>
      <addaction name="action_stash"/>
      <addaction name="action_stash_apply"/>
+     <addaction name="separator"/>
      <addaction name="action_stash_drop"/>
     </widget>
+    <addaction name="action_repository_status"/>
+    <addaction name="action_repo_merge"/>
     <addaction name="action_commit"/>
     <addaction name="separator"/>
     <addaction name="action_repo_jump"/>
+    <addaction name="action_repo_jump_to_head"/>
     <addaction name="action_repo_checkout"/>
     <addaction name="menuStash"/>
     <addaction name="action_delete_branch"/>
@@ -1007,6 +1120,16 @@
     <addaction name="separator"/>
     <addaction name="action_clean_df"/>
    </widget>
+   <widget class="QMenu" name="menuExperimental">
+    <property name="title">
+     <string>Experimental</string>
+    </property>
+    <addaction name="action_expand_commit_log"/>
+    <addaction name="action_expand_file_list"/>
+    <addaction name="action_expand_diff_view"/>
+    <addaction name="action_sidebar"/>
+    <addaction name="action_wide"/>
+   </widget>
    <addaction name="menu_File"/>
    <addaction name="menu_View"/>
    <addaction name="menu_Edit"/>
@@ -1015,6 +1138,7 @@
    <addaction name="menuDestructive_3"/>
    <addaction name="menu_Window"/>
    <addaction name="menu_Help"/>
+   <addaction name="menuExperimental"/>
   </widget>
   <widget class="QStatusBar" name="statusBar"/>
   <widget class="QDockWidget" name="dockWidget_log">
@@ -1330,6 +1454,9 @@
    <property name="text">
     <string>&amp;Log</string>
    </property>
+   <property name="shortcut">
+    <string>F4</string>
+   </property>
   </action>
   <action name="action_repo_jump">
    <property name="text">
@@ -1465,9 +1592,109 @@
     <string>Offline</string>
    </property>
   </action>
+  <action name="action_repositories_panel">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>Repositories panel</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+R</string>
+   </property>
+  </action>
+  <action name="action_find">
+   <property name="text">
+    <string>&amp;Find...</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+F</string>
+   </property>
+  </action>
+  <action name="action_find_next">
+   <property name="text">
+    <string>Find next</string>
+   </property>
+   <property name="shortcut">
+    <string>F3</string>
+   </property>
+  </action>
+  <action name="action_repository_status">
+   <property name="icon">
+    <iconset resource="resources/resources.qrc">
+     <normaloff>:/image/status.svg</normaloff>:/image/status.svg</iconset>
+   </property>
+   <property name="text">
+    <string>Status</string>
+   </property>
+  </action>
+  <action name="action_repo_jump_to_head">
+   <property name="text">
+    <string>Jump to &amp;HEAD</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+H</string>
+   </property>
+  </action>
+  <action name="action_repo_merge">
+   <property name="text">
+    <string>Merge...</string>
+   </property>
+  </action>
+  <action name="action_expand_commit_log">
+   <property name="text">
+    <string>Expand commit log</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+2</string>
+   </property>
+  </action>
+  <action name="action_expand_file_list">
+   <property name="text">
+    <string>Expand file list</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+3</string>
+   </property>
+  </action>
+  <action name="action_expand_diff_view">
+   <property name="text">
+    <string>Expand diff view</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+4</string>
+   </property>
+  </action>
+  <action name="action_sidebar">
+   <property name="text">
+    <string>Sidebar</string>
+   </property>
+   <property name="shortcut">
+    <string>F1</string>
+   </property>
+  </action>
+  <action name="action_wide">
+   <property name="text">
+    <string>Wide</string>
+   </property>
+   <property name="shortcut">
+    <string>F2</string>
+   </property>
+  </action>
  </widget>
  <layoutdefault spacing="6" margin="11"/>
  <customwidgets>
+  <customwidget>
+   <class>FileDiffWidget</class>
+   <extends>QWidget</extends>
+   <header>FileDiffWidget.h</header>
+   <container>1</container>
+  </customwidget>
+  <customwidget>
+   <class>ReadOnlyLineEdit</class>
+   <extends>QLineEdit</extends>
+   <header>ReadOnlyLineEdit.h</header>
+  </customwidget>
   <customwidget>
    <class>TextEditorWidget</class>
    <extends>QWidget</extends>
@@ -1501,19 +1728,12 @@
    <header>RepositoriesTreeWidget.h</header>
   </customwidget>
   <customwidget>
-   <class>FileDiffWidget</class>
-   <extends>QWidget</extends>
-   <header location="global">FileDiffWidget.h</header>
-   <container>1</container>
-  </customwidget>
-  <customwidget>
-   <class>ReadOnlyLineEdit</class>
-   <extends>QLineEdit</extends>
-   <header>ReadOnlyLineEdit.h</header>
+   <class>FilesListWidget</class>
+   <extends>QListWidget</extends>
+   <header>FilesListWidget.h</header>
   </customwidget>
  </customwidgets>
  <tabstops>
-  <tabstop>treeWidget_repos</tabstop>
   <tabstop>tableWidget_log</tabstop>
   <tabstop>listWidget_unstaged</tabstop>
   <tabstop>toolButton_select_all</tabstop>

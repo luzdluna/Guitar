@@ -1,4 +1,9 @@
+
 #include "Git.h"
+#include "GitObjectManager.h"
+#include "MyProcess.h"
+#include "common/joinpath.h"
+#include "common/misc.h"
 #include <QDateTime>
 #include <QDebug>
 #include <QDir>
@@ -7,11 +12,6 @@
 #include <QThread>
 #include <QTimer>
 #include <set>
-#include "common/joinpath.h"
-#include "common/misc.h"
-#include "GitObjectManager.h"
-
-#include "MyProcess.h"
 
 #define DEBUGLOG 0
 
@@ -64,7 +64,7 @@ bool Git::isValidID(QString const &id)
 {
 	int zero = 0;
 	int n = id.size();
-	if (n > 2 && n <= GIT_ID_LENGTH) {
+	if (n >= 4 && n <= GIT_ID_LENGTH) {
 		ushort const *p = id.utf16();
 		for (int i = 0; i < n; i++) {
 			uchar c = p[i];
@@ -82,6 +82,12 @@ bool Git::isValidID(QString const &id)
 		return true; // ok
 	}
 	return false;
+}
+
+QString Git::status()
+{
+	git("status");
+	return resultText();
 }
 
 QByteArray Git::toQByteArray() const
@@ -227,6 +233,8 @@ QString Git::version()
 	return resultText().trimmed();
 }
 
+
+
 bool Git::init()
 {
 	bool ok = false;
@@ -255,47 +263,9 @@ QString Git::rev_parse(QString const &name)
 	return QString();
 }
 
-QStringList Git::refs()
-{
-	QStringList lines;
-	{
-		QString path = workingRepositoryDir() / ".git/packed-refs";
-		QFile file(path);
-		if (file.open(QFile::ReadOnly)) {
-			while (!file.atEnd()) {
-				QByteArray ba = file.readLine();
-				QString line = QString::fromLatin1(ba).trimmed();
-				if (line.indexOf(" refs/") > 0) {
-					lines.push_back(line);
-				}
-			}
-		}
-	}
-	{
-		QString refspath = workingRepositoryDir() / ".git/refs/tags";
-		QDirIterator it(refspath);
-		while (it.hasNext()) {
-			it.next();
-			QString path = it.filePath();
-			if (QFileInfo(path).isFile()) {
-				QString name = it.fileName();
-				QFile file(path);
-				if (file.open(QFile::ReadOnly)) {
-					QByteArray ba = file.readAll();
-					QString id = QString::fromLatin1(ba).trimmed();
-					if (Git::isValidID(id)) {
-						QString line = id + " refs/tags/" + name;
-						lines.push_back(line);
-					}
-				}
-			}
-		}
-	}
-	return lines;
-}
-
 QList<Git::Tag> Git::tags()
 {
+#if 0
 	auto MidCmp = [](QString const &line, int i, char const *ptr){
 		ushort const *p = line.utf16();
 		for (int j = 0; ptr[j]; j++) {
@@ -315,6 +285,28 @@ QList<Git::Tag> Git::tags()
 				tag.name = line.mid(i + 11).trimmed();
 				if (tag.name.isEmpty()) continue;
 				list.push_back(tag);
+			}
+		}
+	}
+	return list;
+#else
+	return tags2();
+#endif
+}
+
+QList<Git::Tag> Git::tags2()
+{
+	QList<Tag> list;
+	git("show-ref");
+	QStringList lines = misc::splitLines(resultText());
+	for (QString const &line : lines) {
+		QStringList l = misc::splitWords(line);
+		if (l.size() >= 2) {
+			if (isValidID(l[0]) && l[1].startsWith("refs/tags/")) {
+				Tag t;
+				t.name = l[1].mid(10);
+				t.id = l[0];
+				list.push_back(t);
 			}
 		}
 	}
@@ -418,7 +410,7 @@ QString Git::getCurrentBranchName()
 QStringList Git::getUntrackedFiles()
 {
 	QStringList files;
-	Git::FileStatusList stats = status();
+	Git::FileStatusList stats = status_s();
 	for (FileStatus const &s : stats) {
 		if (s.code() == FileStatusCode::Untracked) {
 			files.push_back(s.path1());
@@ -868,7 +860,7 @@ bool Git::push(bool tags, AbstractPtyProcess *pty)
 }
 
 
-Git::FileStatusList Git::status_()
+Git::FileStatusList Git::status_s_()
 {
 	FileStatusList files;
 	if (git("status -s -u --porcelain")) {
@@ -886,9 +878,9 @@ Git::FileStatusList Git::status_()
 	return files;
 }
 
-Git::FileStatusList Git::status()
+Git::FileStatusList Git::status_s()
 {
-	return status_();
+	return status_s_();
 }
 
 QString Git::objectType(QString const &id)
@@ -968,10 +960,16 @@ void Git::pull(AbstractPtyProcess *pty)
 
 void Git::fetch(AbstractPtyProcess *pty, bool prune)
 {
-	QString cmd = "fetch";
+	QString cmd = "fetch --tags -f";
 	if (prune) {
 		cmd += " --prune";
 	}
+	git(cmd, true, false, pty);
+}
+
+void Git::fetch_tags_f(AbstractPtyProcess *pty)
+{
+	QString cmd = "fetch --tags -f";
 	git(cmd, true, false, pty);
 }
 
@@ -1001,9 +999,41 @@ void Git::cherrypick(QString const &name)
 	git("cherry-pick " + name);
 }
 
-void Git::mergeBranch(QString const &name)
+QString Git::getCherryPicking() const
 {
-	git("merge " + name);
+	QString dir = workingRepositoryDir();
+	QString path = dir / ".git/CHERRY_PICK_HEAD";
+	QFile file(path);
+	if (file.open(QFile::ReadOnly)) {
+		QString line = QString::fromLatin1(file.readLine()).trimmed();
+		if (isValidID(line)) {
+			return line;
+		}
+	}
+	return QString();
+}
+
+QString Git::getMessage(QString const &id)
+{
+	git("show --no-patch --pretty=%s " + id);
+	return resultText().trimmed();
+}
+
+void Git::mergeBranch(QString const &name, MergeFastForward ff)
+{
+	QString cmd = "merge ";
+	switch (ff) {
+	case MergeFastForward::No:
+		cmd += "--no-ff ";
+		break;
+	case MergeFastForward::Only:
+		cmd += "--ff-only ";
+		break;
+	default:
+		cmd += "--ff ";
+		break;
+	}
+	git(cmd + name);
 }
 
 void Git::rebaseBranch(QString const &name)
@@ -1177,7 +1207,7 @@ bool Git::reflog(ReflogItemList *out, int maxcount)
 						}
 					}
 					if (start) {
-						// ex. "0a2a8b6b66f48bcbf985d8a2afcd14ff41676c16 HEAD@{188}: commit: comment text"
+						// ex. "0a2a8b6b66f48bcbf985d8a2afcd14ff41676c16 HEAD@{188}: commit: message"
 						item = ReflogItem();
 						int i = line.indexOf(": ");
 						if (i > 0) {
@@ -1185,7 +1215,7 @@ bool Git::reflog(ReflogItemList *out, int maxcount)
 							if (j > 2) {
 								item.head = line.mid(0, i);
 								item.command = line.mid(i + 2, j - i - 2);
-								item.comment= line.mid(j + 2);
+								item.message = line.mid(j + 2);
 								if (item.head.size() > GIT_ID_LENGTH) {
 									item.id = item.head.mid(0, GIT_ID_LENGTH);
 									item.head = item.head.mid(GIT_ID_LENGTH + 1);
@@ -1287,7 +1317,7 @@ void Git::FileStatus::parse(QString const &text)
 
 QByteArray Git::blame(QString const &path)
 {
-	QString cmd = "blame --abbrev=40 \"%1\"";
+	QString cmd = "blame --porcelain --abbrev=40 \"%1\"";
 	cmd = cmd.arg(path);
 	if (git(cmd)) {
 		return toQByteArray();

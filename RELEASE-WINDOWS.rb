@@ -1,7 +1,7 @@
 #!/usr/bin/ruby
 
-$qt = "C:/Qt/5.7/msvc2013"
-#$qt = "" # ƒXƒ^ƒeƒBƒbƒNƒŠƒ“ƒN‚Ì‚Æ‚«
+$qt = "C:/Qt/Qt5.7.1/5.7/msvc2013"
+#$qt = "" # ã‚¹ã‚¿ãƒ†ã‚£ãƒƒã‚¯ãƒªãƒ³ã‚¯ã®ã¨ã
 
 $openssl = "C:/openssl"
 
@@ -77,7 +77,13 @@ if $qt != ''
 
 end
 
+pkgfilename = "#{$product_name}-#{$version_a}.#{$version_b}.#{$version_c}-win32.zip"
+
 Dir.chdir($workdir) {
-	`7z a #{$product_name}-#{$version_a}.#{$version_b}.#{$version_c}-win32.zip #{$product_name}`
+	`7z a #{pkgfilename} #{$product_name}`
+}
+
+Dir.chdir("packaging/win") {
+	`mk.bat #{pkgfilename}`
 }
 

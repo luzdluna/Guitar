@@ -15,7 +15,7 @@ GitObjectManager::GitObjectManager()
 	subdir_git_objects_pack = subdir_git_objects / "pack";
 }
 
-void GitObjectManager::setup(GitPtr g)
+void GitObjectManager::setup(GitPtr const &g)
 {
 	this->g = g;
 	clearIndexes();
@@ -159,7 +159,7 @@ bool GitObjectManager::extractObjectFromPackFile(QString const &id, QByteArray *
 {
 	loadIndexes();
 
-	for (GitPackIdxPtr idx : git_idx_list) {
+	for (GitPackIdxPtr const &idx : git_idx_list) {
 		GitPackIdxItem const *item = idx->item(id);
 		if (item) {
 			GitPack::Object obj;
@@ -237,15 +237,20 @@ size_t GitObjectCache::size() const
 	return size;
 }
 
-void GitObjectCache::setup(GitPtr g)
+void GitObjectCache::setup(GitPtr const &g)
 {
 	items.clear();
 	revparsemap.clear();
-	object_manager.setup(g->dup());
+	if (g) {
+		object_manager.setup(g->dup());
+	}
 }
 
 QString GitObjectCache::revParse(QString const &name)
 {
+	GitPtr g = git();
+	if (!g) return QString();
+
 	{
 		QMutexLocker lock(&object_manager.mutex);
 		auto it = revparsemap.find(name);
@@ -254,7 +259,7 @@ QString GitObjectCache::revParse(QString const &name)
 		}
 	}
 
-	QString id = git()->rev_parse(name);
+	QString id = g->rev_parse(name);
 
 	{
 		QMutexLocker lock(&object_manager.mutex);

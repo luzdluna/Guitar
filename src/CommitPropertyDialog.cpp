@@ -23,7 +23,7 @@ void CommitPropertyDialog::init(BasicMainWindow *mw)
 
 	m->mainwindow = mw;
 
-	ui->lineEdit_description->setText(m->commit.message);
+	ui->lineEdit_message->setText(m->commit.message);
 	ui->lineEdit_commit_id->setText(m->commit.commit_id);
 	ui->lineEdit_date->setText(misc::makeDateTimeString(m->commit.commit_date));
 	ui->lineEdit_author->setText(m->commit.author);
@@ -83,7 +83,7 @@ void CommitPropertyDialog::init(BasicMainWindow *mw)
 
 void CommitPropertyDialog::updateAvatar(bool request)
 {
-	if (!mainwindow()->isRemoteOnline()) return;
+	if (!mainwindow()->isOnlineMode()) return;
 
 	auto SetAvatar = [&](QString const &email, QLabel *label){
 		if (mainwindow()->appsettings()->get_committer_icon) {
@@ -149,7 +149,7 @@ void CommitPropertyDialog::showJumpButton(bool f)
 
 void CommitPropertyDialog::on_pushButton_checkout_clicked()
 {
-	mainwindow()->checkout(this, &m->commit);
+	mainwindow()->checkout(this, &m->commit, [&](){ hide(); });
 	done(QDialog::Rejected);
 }
 

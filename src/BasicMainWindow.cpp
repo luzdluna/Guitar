@@ -14,7 +14,6 @@
 #include "FileUtil.h"
 #include "Git.h"
 #include "GitDiff.h"
-#include "JumpDialog.h"
 #include "MemoryReader.h"
 #include "MySettings.h"
 #include "PushDialog.h"
@@ -45,13 +44,12 @@
 #include <functional>
 #include <memory>
 
-
 class AsyncExecGitThread_ : public QThread {
 private:
 	GitPtr g;
 	std::function<void(GitPtr g)> callback;
 public:
-	AsyncExecGitThread_(GitPtr g, std::function<void(GitPtr g)> callback)
+		AsyncExecGitThread_(GitPtr const &g, std::function<void(GitPtr const &g)> const &callback)
 		: g(g)
 		, callback(callback)
 	{
@@ -199,7 +197,7 @@ public:
 
 bool BasicMainWindow::event(QEvent *event)
 {
-	if (event->type() == EventUserFunction) {
+	if (event->type() == (QEvent::Type)EventUserFunction) {
 		if (auto *e = dynamic_cast<UserFunctionEvent *>(event)) {
 			e->func(e->var);
 			return true;
@@ -253,11 +251,17 @@ void BasicMainWindow::autoOpenRepository(QString dir)
 
 GitPtr BasicMainWindow::git(QString const &dir) const
 {
-	const_cast<BasicMainWindow *>(this)->checkGitCommand();
+//	const_cast<BasicMainWindow *>(this)->checkGitCommand();
 
 	GitPtr g = std::make_shared<Git>(m->gcx, dir);
-	g->setLogCallback(git_callback, (void *)this);
-	return g;
+	if (g && QFileInfo(g->gitCommand()).isExecutable()) {
+		g->setLogCallback(git_callback, (void *)this);
+		return g;
+	} else {
+		QString text = tr("git command not specified") + '\n';
+		const_cast<BasicMainWindow *>(this)->writeLog(text);
+		return GitPtr();
+	}
 }
 
 GitPtr BasicMainWindow::git()
@@ -273,7 +277,7 @@ QPixmap BasicMainWindow::getTransparentPixmap()
 QIcon BasicMainWindow::committerIcon(int row) const
 {
 	QIcon icon;
-	if (isAvatarEnabled() && isRemoteOnline()) {
+	if (isAvatarEnabled() && isOnlineMode()) {
 		auto const &logs = getLogs();
 		if (row >= 0 && row < (int)logs.size()) {
 			Git::CommitItem const &commit = logs[row];
@@ -313,17 +317,41 @@ QIcon BasicMainWindow::verifiedIcon(char s) const
 
 QString BasicMainWindow::currentWorkingCopyDir() const
 {
-	QString workdir = m->current_repo.local_dir;
-	return workdir.isEmpty() ? QString() : workdir;
+	return m->current_repo.local_dir;
 }
 
-QList<BasicMainWindow::Label> const *BasicMainWindow::label(int row)
+bool BasicMainWindow::isRepositoryOpened() const
+{
+	return Git::isValidWorkingCopy(currentWorkingCopyDir());
+}
+
+QList<BasicMainWindow::Label> const *BasicMainWindow::label(int row) const
 {
 	auto it = getLabelMap()->find(row);
 	if (it != getLabelMap()->end()) {
 		return &it->second;
 	}
 	return nullptr;
+}
+
+QList<BasicMainWindow::Label> BasicMainWindow::sortedLabels(int row) const
+{
+	QList<BasicMainWindow::Label> list;
+	auto const *p = const_cast<BasicMainWindow *>(this)->label(row);
+	if (p && !p->empty()) {
+		list = *p;
+		std::sort(list.begin(), list.end(), [](BasicMainWindow::Label const &l, BasicMainWindow::Label const &r){
+			auto Compare = [](BasicMainWindow::Label const &l, BasicMainWindow::Label const &r){
+				if (l.kind < r.kind) return -1;
+				if (l.kind > r.kind) return 1;
+				if (l.text < r.text) return -1;
+				if (l.text > r.text) return 1;
+				return 0;
+			};
+			return Compare(l, r) < 0;
+		});
+	}
+	return list;
 }
 
 bool BasicMainWindow::saveAs(QString const &id, QString const &dstpath)
@@ -360,7 +388,7 @@ bool BasicMainWindow::testRemoteRepositoryValidity(QString const &url)
 	return ok;
 }
 
-void BasicMainWindow::addWorkingCopyDir(QString dir, bool open)
+void BasicMainWindow::addWorkingCopyDir(QString const &dir, bool open)
 {
 	addWorkingCopyDir(dir, QString(), open);
 }
@@ -377,7 +405,7 @@ QAction *BasicMainWindow::addMenuActionProperty(QMenu *menu)
 	return menu->addAction(tr("&Property"));
 }
 
-void BasicMainWindow::checkout(QWidget *parent, Git::CommitItem const *commit)
+void BasicMainWindow::checkout(QWidget *parent, Git::CommitItem const *commit, std::function<void()> accepted_callback)
 {
 	if (!commit) return;
 
@@ -385,43 +413,58 @@ void BasicMainWindow::checkout(QWidget *parent, Git::CommitItem const *commit)
 	if (!isValidWorkingCopy(g)) return;
 
 	QStringList tags;
+	QStringList all_local_branches;
 	QStringList local_branches;
 	QStringList remote_branches;
 	{
 		NamedCommitList named_commits = namedCommitItems(Branches | Tags | Remotes);
-//		JumpDialog::sort(&named_commits);
 		for (NamedCommitItem const &item : named_commits) {
+			QString name = item.name;
 			if (item.id == commit->commit_id) {
-				QString name = item.name;
 				if (item.type == NamedCommitItem::Type::Tag) {
 					tags.push_back(name);
-				} else if (item.type == NamedCommitItem::Type::Branch) {
+				} else if (item.type == NamedCommitItem::Type::BranchLocal || item.type == NamedCommitItem::Type::BranchRemote) {
 					int i = name.lastIndexOf('/');
 					if (i < 0 && name == "HEAD") continue;
 					if (i > 0 && name.mid(i + 1) == "HEAD") continue;
-					if (item.remote.isNull()) {
+					if (item.type == NamedCommitItem::Type::BranchLocal) {
 						local_branches.push_back(name);
-					} else {
+					} else if (item.type == NamedCommitItem::Type::BranchRemote) {
 						remote_branches.push_back(name);
 					}
 				}
 			}
+			if (item.type == NamedCommitItem::Type::BranchLocal) {
+				all_local_branches.push_back(name);
+			}
 		}
 	}
 
-	CheckoutDialog dlg(parent, tags, local_branches, remote_branches);
+	CheckoutDialog dlg(parent, tags, all_local_branches, local_branches, remote_branches);
 	if (dlg.exec() == QDialog::Accepted) {
+		if (accepted_callback) {
+			accepted_callback();
+		}
 		CheckoutDialog::Operation op = dlg.operation();
 		QString name = dlg.branchName();
 		QString id = commit->commit_id;
+		if (id.isEmpty() && !commit->parent_ids.isEmpty()) {
+			id = commit->parent_ids.front();
+		}
 		bool ok = false;
 		setLogEnabled(g, true);
 		if (op == CheckoutDialog::Operation::HeadDetached) {
-			ok = g->git(QString("checkout \"%1\"").arg(id), true);
+			if (!id.isEmpty()) {
+				ok = g->git(QString("checkout \"%1\"").arg(id), true);
+			}
 		} else if (op == CheckoutDialog::Operation::CreateLocalBranch) {
-			ok = g->git(QString("checkout -b \"%1\" \"%2\"").arg(name).arg(id), true);
+			if (!name.isEmpty() && !id.isEmpty()) {
+				ok = g->git(QString("checkout -b \"%1\" \"%2\"").arg(name).arg(id), true);
+			}
 		} else if (op == CheckoutDialog::Operation::ExistingLocalBranch) {
-			ok = g->git(QString("checkout \"%1\"").arg(name), true);
+			if (!name.isEmpty()) {
+				ok = g->git(QString("checkout \"%1\"").arg(name), true);
+			}
 		}
 		if (ok) {
 			openRepository(true);
@@ -596,7 +639,7 @@ bool BasicMainWindow::isValidWorkingCopy(const GitPtr &g) const
 	return g && g->isValidWorkingCopy();
 }
 
-QString BasicMainWindow::determinFileType_(QString const &path, bool mime, std::function<void (QString const &, QByteArray *)> callback) const
+QString BasicMainWindow::determinFileType_(QString const &path, bool mime, std::function<void (QString const &, QByteArray *)> const &callback) const
 {
 	const_cast<BasicMainWindow *>(this)->checkFileCommand();
 	return misc::determinFileType(global->file_command, path, mime, callback);
@@ -651,7 +694,12 @@ int BasicMainWindow::limitLogCount() const
 	return (n >= 1 && n <= 100000) ? n : 10000;
 }
 
-Git::Object BasicMainWindow::cat_file_(GitPtr g, QString const &id)
+TextEditorThemePtr BasicMainWindow::themeForTextEditor()
+{
+	return global->theme->text_editor_theme;
+}
+
+Git::Object BasicMainWindow::cat_file_(GitPtr const &g, QString const &id)
 {
 	if (isValidWorkingCopy(g)) {
 		QString path_prefix = PATH_PREFIX;
@@ -684,7 +732,7 @@ QString BasicMainWindow::newTempFilePath()
 	return path;
 }
 
-QString BasicMainWindow::findFileID(GitPtr, QString const &commit_id, QString const &file)
+QString BasicMainWindow::findFileID(QString const &commit_id, QString const &file)
 {
 	return lookupFileID(getObjCache(), commit_id, file);
 }
@@ -700,10 +748,11 @@ void BasicMainWindow::updateFilesList(QString const &id, QList<Git::Diff> *diff_
 		if (header.isEmpty()) {
 			header = "(??\?) "; // damn trigraph
 		}
-		QListWidgetItem *item = new QListWidgetItem(header + filename);
+		QListWidgetItem *item = new QListWidgetItem(filename);
 		item->setData(FilePathRole, filename);
 		item->setData(DiffIndexRole, idiff);
 		item->setData(HunkIndexRole, -1);
+		item->setData(HeaderRole, header);
 		listwidget->addItem(item);
 	};
 
@@ -711,11 +760,6 @@ void BasicMainWindow::updateFilesList(QString const &id, QList<Git::Diff> *diff_
 	if (!dm.diff(id, diff_list)) return;
 
 	addDiffItems(diff_list, AddItem);
-}
-
-void BasicMainWindow::writeLog(const char *ptr, int len)
-{
-	internalWriteLog(ptr, len);
 }
 
 void BasicMainWindow::setAppSettings(const ApplicationSettings &appsettings)
@@ -914,6 +958,11 @@ std::map<int, QList<BasicMainWindow::Label>> *BasicMainWindow::getLabelMap()
 	return &m->label_map;
 }
 
+std::map<int, QList<BasicMainWindow::Label>> const *BasicMainWindow::getLabelMap() const
+{
+	return &m->label_map;
+}
+
 void BasicMainWindow::clearLabelMap()
 {
 	m->label_map.clear();
@@ -923,8 +972,6 @@ GitObjectCache *BasicMainWindow::getObjCache()
 {
 	return &m->objcache;
 }
-
-
 
 bool BasicMainWindow::getForceFetch() const
 {
@@ -965,6 +1012,7 @@ void BasicMainWindow::updateCommitGraph()
 {
 	auto const &logs = getLogs();
 	auto *logsp = getLogsPtr();
+
 
 	const size_t LogCount = logs.size();
 	// 樹形図情報を構築する
@@ -1150,17 +1198,31 @@ FAIL:;
 DONE:;
 			}
 			// 線情報を生成する
-			for (const auto & e : elements) {
+			for (auto &e : elements) {
 				auto ColorNumber = [&](){ return e.depth; };
 				size_t count = e.indexes.size();
-				for (size_t j = 0; j + 1 < count; j++) {
-					int curr = e.indexes[j];
-					int next = e.indexes[j + 1];
+				for (size_t i = 0; i + 1 < count; i++) {
+					int curr = e.indexes[i];
+					int next = e.indexes[i + 1];
 					TreeLine line(next, e.depth);
 					line.color_number = ColorNumber();
-					line.bend_early = (j + 2 < count || !LogItem(next).resolved);
-					if (j + 2 == count) {
-						if (count > 2 || !LogItem(curr).has_child) { // 直結ではない、または、子がない
+					line.bend_early = (i + 2 < count || !LogItem(next).resolved);
+					if (i + 2 == count) {
+						int join = false;
+						if (count > 2) { // 直結ではない
+							join = true;
+						} else if (!LogItem(curr).has_child) { // 子がない
+							join = true;
+							int d = LogItem(curr).marker_depth; // 開始点の深さ
+							for (int j = curr + 1; j < next; j++) {
+								Git::CommitItem *item = &LogItem(j);
+								if (item->marker_depth == d) { // 衝突する
+									join = false; // 迂回する
+									break;
+								}
+							}
+						}
+						if (join) {
 							line.depth = LogItem(next).marker_depth; // 合流する先のアイテムの深さと同じにする
 						}
 					}
@@ -1173,6 +1235,30 @@ DONE:;
 			}
 		}
 	}
+}
+
+bool BasicMainWindow::fetch(GitPtr const &g, bool prune)
+{
+	setPtyCondition(PtyCondition::Fetch);
+	setPtyProcessOk(true);
+	g->fetch(getPtyProcess(), prune);
+	while (1) {
+		if (getPtyProcess()->wait(1)) break;
+		QApplication::processEvents();
+	}
+	return getPtyProcessOk();
+}
+
+bool BasicMainWindow::fetch_tags_f(GitPtr const &g)
+{
+	setPtyCondition(PtyCondition::Fetch);
+	setPtyProcessOk(true);
+	g->fetch_tags_f(getPtyProcess());
+	while (1) {
+		if (getPtyProcess()->wait(1)) break;
+		QApplication::processEvents();
+	}
+	return getPtyProcessOk();
 }
 
 bool BasicMainWindow::git_callback(void *cookie, const char *ptr, int len)
@@ -1266,14 +1352,14 @@ QStringList BasicMainWindow::whichCommand_(QString const &cmdfile1, QString cons
 
 	if (!cmdfile1.isEmpty()){
 		std::vector<std::string> vec;
-		FileUtil::which(cmdfile1.toStdString(), &vec);
+		FileUtil::qwhich(cmdfile1.toStdString(), &vec);
 		for (std::string const &s : vec) {
 			list.push_back(QString::fromStdString(s));
 		}
 	}
 	if (!cmdfile2.isEmpty()){
 		std::vector<std::string> vec;
-		FileUtil::which(cmdfile2.toStdString(), &vec);
+		FileUtil::qwhich(cmdfile2.toStdString(), &vec);
 		for (std::string const &s : vec) {
 			list.push_back(QString::fromStdString(s));
 		}
@@ -1282,10 +1368,9 @@ QStringList BasicMainWindow::whichCommand_(QString const &cmdfile1, QString cons
 	return list;
 }
 
-void BasicMainWindow::emitWriteLog(QByteArray ba)
-{
-	emit signalWriteLog(ba);
-}
+
+
+
 
 void BasicMainWindow::setWindowTitle_(Git::User const &user)
 {
@@ -1444,7 +1529,8 @@ bool BasicMainWindow::isValidRemoteURL(QString const &url)
 	stopPtyProcess();
 	GitPtr g = git(QString());
 	QString cmd = "ls-remote \"%1\" HEAD";
-	bool f = g->git(cmd.arg(url), false, false, getPtyProcess());
+	cmd = cmd.arg(url);
+	bool f = g->git(cmd, false, false, getPtyProcess());
 	{
 		QTime time;
 		time.start();
@@ -1457,26 +1543,53 @@ bool BasicMainWindow::isValidRemoteURL(QString const &url)
 		}
 		stopPtyProcess();
 	}
-	QString line = g->resultText().trimmed();
-	QString head;
-	int i = line.indexOf('\t');
-	if (i == GIT_ID_LENGTH) {
-		QString id = line.mid(0, i);
-		QString name = line.mid(i + 1);
-		qDebug() << id << name;
-		if (name == "HEAD" && Git::isValidID(id)) {
-			head = id;
+	if (f) {
+		f = (getPtyProcess()->getExitCode() == 0);
+	}
+	QString line;
+	{
+		std::vector<char> v;
+		getPtyProcess()->readResult(&v);
+		if (!v.empty()) {
+			line = QString::fromUtf8(&v[0], v.size()).trimmed();
 		}
 	}
 	if (f) {
 		qDebug() << "This is a valid repository.";
+		int i = -1;
+		for (int j = 0; j < line.size(); j++) {
+			ushort c = line.utf16()[j];
+			if (QChar(c).isSpace()) {
+				i = j;
+				break;
+			}
+		}
+		QString head;
+		if (i == GIT_ID_LENGTH) {
+			QString id = line.mid(0, i);
+			QString name = line.mid(i + 1).trimmed();
+			qDebug() << id << name;
+			if (name == "HEAD" && Git::isValidID(id)) {
+				head = id;
+			}
+		}
 		if (head.isEmpty()) {
 			qDebug() << "But HEAD not found";
 		}
 		return true;
 	}
-	qDebug() << "It is not a repository.";
+	qDebug() << "This is not a repository.";
 	return false;
+}
+
+QString BasicMainWindow::getObjectID(QListWidgetItem *item)
+{
+	int i = indexOfDiff(item);
+	if (i >= 0 && i < diffResult()->size()) {
+		Git::Diff const &diff = diffResult()->at(i);
+		return diff.blob.a_id;
+	}
+	return QString();
 }
 
 void BasicMainWindow::addWorkingCopyDir(QString dir, QString name, bool open)
@@ -1551,13 +1664,88 @@ void BasicMainWindow::onAvatarUpdated()
 	updateCommitTableLater();
 }
 
-void BasicMainWindow::queryRemotes(GitPtr g)
+QStringList BasicMainWindow::findGitObject(const QString &id) const
 {
+	QStringList list;
+	std::set<QString> set;
+	if (Git::isValidID(id)) {
+		{
+			QString a = id.mid(0, 2);
+			QString b = id.mid(2);
+			QString dir = m->current_repo.local_dir / ".git/objects" / a;
+			QDirIterator it(dir);
+			while (it.hasNext()) {
+				it.next();
+				QFileInfo info = it.fileInfo();
+				if (info.isFile()) {
+					QString c = info.fileName();
+					if (c.startsWith(b)) {
+						set.insert(set.end(), a + c);
+					}
+				}
+			}
+		}
+		{
+			QString dir = m->current_repo.local_dir / ".git/objects/pack";
+			QDirIterator it(dir);
+			while (it.hasNext()) {
+				it.next();
+				QFileInfo info = it.fileInfo();
+				if (info.isFile() && info.fileName().startsWith("pack-") && info.fileName().endsWith(".idx")) {
+					GitPackIdxV2 idx;
+					idx.parse(info.absoluteFilePath());
+					idx.each([&](GitPackIdxItem const *item){
+						if (item->id.startsWith(id)) {
+							set.insert(item->id);
+						}
+						return true;
+					});
+				}
+			}
+		}
+		for (QString const &s : set) {
+			list.push_back(s);
+		}
+	}
+	return list;
+}
+
+void BasicMainWindow::writeLog(const char *ptr, int len)
+{
+	internalWriteLog(ptr, len);
+}
+
+void BasicMainWindow::writeLog(const QString &str)
+{
+	std::string s = str.toStdString();
+	writeLog(s.c_str(), s.size());
+}
+
+void BasicMainWindow::emitWriteLog(QByteArray const &ba)
+{
+	emit signalWriteLog(ba);
+}
+
+void BasicMainWindow::writeLog_(QByteArray ba)
+{
+	if (!ba.isEmpty()) {
+		writeLog(ba.data(), ba.size());
+	}
+}
+
+void BasicMainWindow::queryRemotes(GitPtr const &g)
+{
+	if (!g) return;
 	m->remotes = g->getRemotes();
 	std::sort(m->remotes.begin(), m->remotes.end());
 }
 
-bool BasicMainWindow::runOnRepositoryDir(std::function<void (QString)> callback, RepositoryItem const *repo)
+void BasicMainWindow::msgNoRepositorySelected()
+{
+	QMessageBox::warning(this, qApp->applicationName(), tr("No repository selected"));
+}
+
+bool BasicMainWindow::runOnRepositoryDir(std::function<void (QString)> const &callback, RepositoryItem const *repo)
 {
 	if (!repo) {
 		repo = &m->current_repo;
@@ -1568,7 +1756,7 @@ bool BasicMainWindow::runOnRepositoryDir(std::function<void (QString)> callback,
 		callback(dir);
 		return true;
 	}
-	QMessageBox::warning(this, qApp->applicationName(), tr("No repository selected"));
+	msgNoRepositorySelected();
 	return false;
 }
 
@@ -1577,6 +1765,8 @@ void BasicMainWindow::clearSshAuthentication()
 	m->ssh_passphrase_user.clear();
 	m->ssh_passphrase_pass.clear();
 }
+
+
 
 QString BasicMainWindow::getFilePath(QListWidgetItem *item)
 {
@@ -1812,7 +2002,7 @@ void BasicMainWindow::checkUser()
 	}
 }
 
-void BasicMainWindow::openRepository(bool validate, bool waitcursor)
+void BasicMainWindow::openRepository(bool validate, bool waitcursor, bool keep_selection)
 {
 	if (validate) {
 		QString dir = currentWorkingCopyDir();
@@ -1831,15 +2021,24 @@ void BasicMainWindow::openRepository(bool validate, bool waitcursor)
 
 	if (waitcursor) {
 		OverrideWaitCursor;
-		openRepository(false, false);
+		openRepository(false, false, keep_selection);
 		return;
 	}
 
 	GitPtr g = git(); // ポインタの有効性チェックはしない（nullptrでも続行）
+	openRepository_(g, keep_selection);
+}
+
+void BasicMainWindow::updateRepository()
+{
+	GitPtr g = git();
+	if (!isValidWorkingCopy(g)) return;
+
+	OverrideWaitCursor;
 	openRepository_(g);
 }
 
-void BasicMainWindow::reopenRepository(bool log, std::function<void (GitPtr)> callback)
+void BasicMainWindow::reopenRepository(bool log, std::function<void(GitPtr const &)> const &callback)
 {
 	GitPtr g = git();
 	if (!isValidWorkingCopy(g)) return;
@@ -1873,12 +2072,12 @@ void BasicMainWindow::openSelectedRepository()
 	}
 }
 
-void BasicMainWindow::checkRemoteUpdate()
-{
-	if (getPtyProcess()->isRunning()) return;
+//void BasicMainWindow::checkRemoteUpdate()
+//{
+//	if (getPtyProcess()->isRunning()) return;
 
-	emit signalCheckRemoteUpdate();
-}
+//	emit signalCheckRemoteUpdate();
+//}
 
 bool BasicMainWindow::isThereUncommitedChanges() const
 {
@@ -1890,7 +2089,7 @@ bool BasicMainWindow::makeDiff(QString id, QList<Git::Diff> *out)
 	GitPtr g = git();
 	if (!isValidWorkingCopy(g)) return false;
 
-	Git::FileStatusList list = g->status();
+	Git::FileStatusList list = g->status_s();
 	setUncommitedChanges(!list.empty());
 
 	if (id.isEmpty() && !isThereUncommitedChanges()) {
@@ -1929,7 +2128,7 @@ void BasicMainWindow::addDiffItems(const QList<Git::Diff> *diff_list, const std:
 	}
 }
 
-Git::CommitItemList BasicMainWindow::retrieveCommitLog(GitPtr g)
+Git::CommitItemList BasicMainWindow::retrieveCommitLog(GitPtr const &g)
 {
 	Git::CommitItemList list = g->log(limitLogCount());
 
@@ -1937,18 +2136,20 @@ Git::CommitItemList BasicMainWindow::retrieveCommitLog(GitPtr g)
 
 	std::set<QString> set;
 
+	const size_t count = list.size();
+	size_t limit = count;
+
 	size_t i = 0;
-	while (i < list.size()) {
+	while (i < count) {
 		size_t newpos = -1;
 		for (QString const &parent : list[i].parent_ids) {
-			auto it = set.find(parent);
-			if (it != set.end()) {
+			if (set.find(parent) != set.end()) {
 				for (size_t j = 0; j < i; j++) {
 					if (parent == list[j].commit_id) {
 						if (newpos == (size_t)-1 || j < newpos) {
 							newpos = j;
 						}
-						qDebug() << "fix commit order" << parent;
+						qDebug() << "fix commit order" << list[i].commit_id;
 						break;
 					}
 				}
@@ -1956,9 +2157,13 @@ Git::CommitItemList BasicMainWindow::retrieveCommitLog(GitPtr g)
 		}
 		set.insert(set.end(), list[i].commit_id);
 		if (newpos != (size_t)-1) {
-			Git::CommitItem t = list[newpos];
-			list.erase(list.begin() + newpos);
-			list.insert(list.begin() + i, t);
+			if (limit == 0) break; // まず無いと思うが、もし、無限ループに陥ったら
+			Git::CommitItem t = list[i];
+			t.strange_date = true;
+			list.erase(list.begin() + i);
+			list.insert(list.begin() + newpos, t);
+			i = newpos;
+			limit--;
 		}
 		i++;
 	}
@@ -1966,7 +2171,7 @@ Git::CommitItemList BasicMainWindow::retrieveCommitLog(GitPtr g)
 	return list;
 }
 
-void BasicMainWindow::queryBranches(GitPtr g)
+void BasicMainWindow::queryBranches(GitPtr const &g)
 {
 	Q_ASSERT(g);
 	m->branch_map.clear();
@@ -2007,7 +2212,7 @@ void BasicMainWindow::updateRemoteInfo()
 	emit remoteInfoChanged();
 }
 
-void BasicMainWindow::updateWindowTitle(GitPtr g)
+void BasicMainWindow::updateWindowTitle(GitPtr const &g)
 {
 	if (isValidWorkingCopy(g)) {
 		Git::User user = g->getUser(Git::Source::Default);
@@ -2040,12 +2245,12 @@ QString BasicMainWindow::makeCommitInfoText(int row, QList<BasicMainWindow::Labe
 				label.text = "remotes" / b.remote / label.text;
 			}
 			if (b.ahead > 0) {
-				label.text += tr(", %1 ahead").arg(b.ahead);
+				label.info += tr(", %1 ahead").arg(b.ahead);
 			}
 			if (b.behind > 0) {
-				label.text += tr(", %1 behind").arg(b.behind);
+				label.info += tr(", %1 behind").arg(b.behind);
 			}
-			message_ex += " {" + label.text + '}';
+			message_ex += " {" + label.text + label.info + '}';
 			if (label_list) label_list->push_back(label);
 		}
 	}
@@ -2077,10 +2282,10 @@ void BasicMainWindow::removeRepositoryFromBookmark(int index, bool ask)
 
 void BasicMainWindow::clone(QString url, QString dir)
 {
-	if (!isRemoteOnline()) return;
+	if (!isOnlineMode()) return;
 
-	dir = defaultWorkingDir();
 	while (1) {
+		dir = defaultWorkingDir();
 		CloneDialog dlg(this, url, dir);
 		if (dlg.exec() != QDialog::Accepted) {
 			return;
@@ -2161,6 +2366,17 @@ void BasicMainWindow::commit(bool amend)
 	GitPtr g = git();
 	if (!isValidWorkingCopy(g)) return;
 
+	QString message;
+
+	if (amend) {
+		message = getLogs()[0].message;
+	} else {
+		QString id = g->getCherryPicking();
+		if (Git::isValidID(id)) {
+			message = g->getMessage(id);
+		}
+	}
+
 	while (1) {
 		Git::User user = g->getUser(Git::Source::Default);
 		QString sign_id = g->signingKey(Git::Source::Default);
@@ -2175,9 +2391,7 @@ void BasicMainWindow::commit(bool amend)
 			}
 		}
 		CommitDialog dlg(this, currentRepositoryName(), user, key);
-		if (amend) {
-			dlg.setText(getLogs()[0].message);
-		}
+		dlg.setText(message);
 		if (dlg.exec() == QDialog::Accepted) {
 			QString text = dlg.text();
 			if (text.isEmpty()) {
@@ -2193,6 +2407,7 @@ void BasicMainWindow::commit(bool amend)
 			}
 			if (ok) {
 				setForceFetch(true);
+				updateStatusBarText();
 				openRepository(true);
 			} else {
 				QString err = g->errorMessage().trimmed();
@@ -2278,7 +2493,7 @@ bool BasicMainWindow::pushSetUpstream(bool testonly)
 
 void BasicMainWindow::push()
 {
-	if (!isRemoteOnline()) return;
+	if (!isOnlineMode()) return;
 
 	GitPtr g = git();
 	if (!isValidWorkingCopy(g)) return;
@@ -2380,7 +2595,6 @@ void BasicMainWindow::deleteBranch(Git::CommitItem const *commit)
 	QStringList current_local_branch_names;
 	{
 		NamedCommitList named_commits = namedCommitItems(Branches);
-//		JumpDialog::sort(&named_commits);
 		for (NamedCommitItem const &item : named_commits) {
 			if (item.name == "HEAD") continue;
 			if (item.id == commit->commit_id) {
@@ -2403,7 +2617,7 @@ void BasicMainWindow::deleteBranch(Git::CommitItem const *commit)
 			}
 		}
 		if (count > 0) {
-			openRepository(true);
+			openRepository(true, true, true);
 		}
 	}
 }
@@ -2422,7 +2636,6 @@ QStringList MainWindow::remoteBranches(QString const &id, QStringList *all)
 	GitPtr g = git();
 	if (isValidWorkingCopy(g)) {
 		NamedCommitList named_commits = namedCommitItems(Branches | Remotes);
-//		JumpDialog::sort(&named_commits);
 		for (NamedCommitItem const &item : named_commits) {
 			if (item.id == id && !item.remote.isEmpty()) {
 				list.push_back(item.remote / item.name);
@@ -2570,7 +2783,7 @@ NamedCommitList BasicMainWindow::namedCommitItems(int flags)
 {
 	NamedCommitList items;
 	if (flags & Branches) {
-		for (auto pair: branchMapRef()) {
+		for (auto const &pair: branchMapRef()) {
 			QList<Git::Branch> const &list = pair.second;
 			for (Git::Branch const &b : list) {
 				if (b.isHeadDetached()) continue;
@@ -2580,8 +2793,16 @@ NamedCommitList BasicMainWindow::namedCommitItems(int flags)
 					if (!b.remote.isEmpty()) continue;
 				}
 				NamedCommitItem item;
-				item.type = NamedCommitItem::Type::Branch;
-				item.remote = b.remote;
+				if (b.remote.isEmpty()) {
+					if (b.name == "HEAD") {
+						item.type = NamedCommitItem::Type::None;
+					} else {
+						item.type = NamedCommitItem::Type::BranchLocal;
+					}
+				} else {
+					item.type = NamedCommitItem::Type::BranchRemote;
+					item.remote = b.remote;
+				}
 				item.name = b.name;
 				item.id = b.id;
 				items.push_back(item);
@@ -2589,13 +2810,16 @@ NamedCommitList BasicMainWindow::namedCommitItems(int flags)
 		}
 	}
 	if (flags & Tags) {
-		for (auto pair: *ptrTagMap()) {
+		for (auto const &pair: *ptrTagMap()) {
 			QList<Git::Tag> const &list = pair.second;
 			for (Git::Tag const &t : list) {
 				NamedCommitItem item;
 				item.type = NamedCommitItem::Type::Tag;
 				item.name = t.name;
 				item.id = t.id;
+				if (item.name.startsWith("refs/tags/")) {
+					item.name = item.name.mid(10);
+				}
 				items.push_back(item);
 			}
 		}
@@ -2643,7 +2867,7 @@ void BasicMainWindow::createRepository(QString const &dir)
 	}
 }
 
-void BasicMainWindow::setLogEnabled(GitPtr g, bool f)
+void BasicMainWindow::setLogEnabled(GitPtr const &g, bool f)
 {
 	if (f) {
 		g->setLogCallback(git_callback, this);
@@ -2702,4 +2926,10 @@ void BasicMainWindow::doGitCommand(std::function<void(GitPtr g)> const &callback
 		openRepository(false, false);
 	}
 }
+
+
+
+
+
+
 

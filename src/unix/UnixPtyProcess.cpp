@@ -1,14 +1,14 @@
 #include "UnixPtyProcess.h"
-#include <unistd.h>
-#include <cstdlib>
+#include <QDir>
+#include <QMutex>
 #include <csignal>
+#include <cstdlib>
+#include <deque>
 #include <fcntl.h>
-#include <termios.h>
 #include <sys/ioctl.h>
 #include <sys/wait.h>
-#include <deque>
-#include <QMutex>
-#include <QDir>
+#include <termios.h>
+#include <unistd.h>
 
 namespace {
 
@@ -54,7 +54,7 @@ private:
 	std::deque<char> *output_queue;
 	std::vector<char> *output_vector;
 protected:
-	void run()
+	void run() override
 	{
 		while (1) {
 			if (isInterruptionRequested()) break;
@@ -155,11 +155,10 @@ void UnixPtyProcess::run()
 	grantpt(m->pty_master);
 	unlockpt(m->pty_master);
 
-
 	pid_t pid = fork();
 	if (pid == 0) {
 		setsid();
-		putenv(const_cast<char *>("LANG=C"));
+		setenv("LANG", "C", 1);
 
 		char *pts_name = ptsname(m->pty_master);
 		int pty_slave = open(pts_name, O_RDWR);
@@ -199,7 +198,7 @@ void UnixPtyProcess::run()
 			int status = 0;
 			int r = waitpid(pid, &status, WNOHANG);
 			if (r < 0) break;
-			QThread::currentThread()->msleep(1);
+			QThread::msleep(1);
 			if (r > 0) {
 				if (WIFEXITED(status)) {
 					m->exit_code = WEXITSTATUS(status);
@@ -240,4 +239,10 @@ QString UnixPtyProcess::getMessage() const
 		s = QString::fromUtf8(&m->output_vector[0], m->output_vector.size());
 	}
 	return s;
+}
+
+void UnixPtyProcess::readResult(std::vector<char> *out)
+{
+	*out = m->output_vector;
+	m->output_vector.clear();
 }

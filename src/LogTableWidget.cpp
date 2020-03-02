@@ -1,13 +1,14 @@
 #include "LogTableWidget.h"
+#include "MainWindow.h"
+#include "MyTableWidgetDelegate.h"
+#include "common/misc.h"
+#include <QApplication>
 #include <QDebug>
 #include <QEvent>
 #include <QPainter>
 #include <QProxyStyle>
 #include <cmath>
-#include "MainWindow.h"
-#include <QApplication>
-#include "MyTableWidgetDelegate.h"
-#include "common/misc.h"
+#include <map>
 
 struct LogTableWidget::Private {
 };
@@ -53,14 +54,16 @@ private:
 		if (!opt.widget->isEnabled()) return;
 
 		Git::CommitItem const *commit = mainwindow()->commitItem(index.row());
-		QIcon icon = mainwindow()->verifiedIcon(commit->signature);
-		if (!icon.isNull()) {
-			QRect r = opt.rect.adjusted(6, 3, 0, -3);
-			int h = r.height();
-			int w = h;
-			int x = r.x() + r.width() - w;
-			int y = r.y();
-			icon.paint(painter, x, y, w, h);
+		if (commit) {
+			QIcon icon = mainwindow()->verifiedIcon(commit->signature);
+			if (!icon.isNull()) {
+				QRect r = opt.rect.adjusted(6, 3, 0, -3);
+				int h = r.height();
+				int w = h;
+				int x = r.x() + r.width() - w;
+				int y = r.y();
+				icon.paint(painter, x, y, w, h);
+			}
 		}
 	}
 
@@ -83,7 +86,7 @@ private:
 		}
 	}
 
-	void drawDescription(QPainter *painter, const QStyleOptionViewItem &opt, QModelIndex const &index) const
+	void drawLabels(QPainter *painter, const QStyleOptionViewItem &opt, QModelIndex const &index) const
 	{
 		int row = index.row();
 		QList<BasicMainWindow::Label> const *labels = mainwindow()->label(row);
@@ -100,8 +103,8 @@ private:
 			while (i > 0) {
 				i--;
 				BasicMainWindow::Label const &label = labels->at(i);
-				QString text = misc::abbrevBranchName(label.text);
-				int w = fm.size(0, text).width() + space * 2;
+				QString text = misc::abbrevBranchName(label.text + label.info);
+				int w = fm.size(0, text).width() + space * 2; // 幅
 				int x0 = x1 - w;
 				QRect r(x0, y0, x1 - x0, y1 - y0);
 				painter->setPen(Qt::NoPen);
@@ -117,7 +120,7 @@ private:
 				DrawRect(0, 0, color);
 				painter->setPen(Qt::black);
 				painter->setBrush(Qt::NoBrush);
-				qApp->style()->drawItemText(painter, r.adjusted(space, 0, 0, 0), opt.displayAlignment, opt.palette, true, text);
+				QApplication::style()->drawItemText(painter, r.adjusted(space, 0, 0, 0), opt.displayAlignment, opt.palette, true, text);
 				x1 = x0;
 			}
 			painter->restore();
@@ -133,19 +136,37 @@ public:
 	{
 		MyTableWidgetDelegate::paint(painter, option, index);
 
+		enum {
+			Graph,
+			CommitId,
+			Date,
+			Author,
+			Message,
+		};
+
 		// signatureの描画
-		if (index.column() == 1) {
+		if (index.column() == CommitId) {
 			drawSignatureIcon(painter, option, index);
 		}
 
+		// コミット日時
+		if (index.column() == Date) {
+			Git::CommitItem const *commit = mainwindow()->commitItem(index.row());
+			if (commit && commit->strange_date) {
+				QColor color(255, 0, 0, 128);
+				QRect r = option.rect.adjusted(1, 1, -1, -2);
+				misc::drawFrame(painter, r.x(), r.y(), r.width(), r.height(), color, color);
+			}
+		}
+
 		// avatarの描画
-		if (index.column() == 3) {
+		if (index.column() == Author) {
 			drawAvatar(painter, option, index);
 		}
 
-		// Descriptionの描画
-		if (index.column() == 4) {
-			drawDescription(painter, option, index);
+		// ラベルの描画
+		if (index.column() == Message) {
+			drawLabels(painter, option, index);
 		}
 	}
 };
@@ -164,7 +185,7 @@ LogTableWidget::~LogTableWidget()
 
 MainWindow *LogTableWidget::mainwindow()
 {
-	MainWindow *mw = qobject_cast<MainWindow *>(window());
+	auto *mw = qobject_cast<MainWindow *>(window());
 	Q_ASSERT(mw);
 	return mw;
 }
@@ -220,6 +241,9 @@ void LogTableWidget::paintEvent(QPaintEvent *e)
 
 	int indent_span = 16;
 
+	int line_width = 2;
+	int thick_line_width = 4;
+
 	auto ItemRect = [&](int row){
 		QRect r;
 		QTableWidgetItem *p = item(row, 0);
@@ -229,7 +253,9 @@ void LogTableWidget::paintEvent(QPaintEvent *e)
 		return r;
 	};
 
-	int line_width = 2;
+	auto IsAncestor = [&](Git::CommitItem const &item){
+		return mainwindow()->isAncestorCommit(item.commit_id);
+	};
 
 	auto ItemPoint = [&](int depth, QRect const &rect){
 		int h = rect.height();
@@ -239,10 +265,10 @@ void LogTableWidget::paintEvent(QPaintEvent *e)
 		return QPointF(x, y);
 	};
 
-	auto SetPen = [&](QPainter *pr, int level, bool /*continued*/){
+	auto SetPen = [&](QPainter *pr, int level, bool thick){
 		QColor c = mainwindow()->color(level + 1);
 		Qt::PenStyle s = Qt::SolidLine;
-		pr->setPen(QPen(c, line_width, s));
+		pr->setPen(QPen(c, thick ? thick_line_width : line_width, s));
 	};
 
 	auto DrawLine = [&](size_t index, int itemrow){
@@ -274,7 +300,7 @@ void LogTableWidget::paintEvent(QPaintEvent *e)
 						}
 					}
 					if (path) {
-						SetPen(&pr, line.color_number, false);
+						SetPen(&pr, line.color_number, IsAncestor(item1));
 						pr.drawPath(*path);
 						delete path;
 					}
@@ -294,12 +320,13 @@ void LogTableWidget::paintEvent(QPaintEvent *e)
 			double r = 4;
 			x = pt.x() - r;
 			y = pt.y() - r;
-			SetPen(&pr, item.marker_depth, false);
 			if (item.resolved) {
 				// ◯
+				SetPen(&pr, item.marker_depth, IsAncestor(item));
 				pr.drawEllipse((int)x, (int)y, int(r * 2), int(r * 2));
 			} else {
 				// ▽
+				SetPen(&pr, item.marker_depth, false);
 				QPainterPath path;
 				path.moveTo(pt.x(), pt.y() + r);
 				path.lineTo(pt.x() - r, pt.y() - r);
@@ -330,5 +357,17 @@ void LogTableWidget::paintEvent(QPaintEvent *e)
 		double y = DrawMark(i, i);
 		if (y >= height()) break;
 	}
+}
+
+void LogTableWidget::resizeEvent(QResizeEvent *e)
+{
+	mainwindow()->updateAncestorCommitMap();
+	QTableWidget::resizeEvent(e);
+}
+
+void LogTableWidget::verticalScrollbarValueChanged(int value)
+{
+	(void)value;
+	mainwindow()->updateAncestorCommitMap();
 }
 

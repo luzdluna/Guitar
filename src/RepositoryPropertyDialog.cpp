@@ -1,13 +1,12 @@
 #include "RepositoryPropertyDialog.h"
 #include "ui_RepositoryPropertyDialog.h"
-#include "common/misc.h"
 #include "MainWindow.h"
-
+#include "common/misc.h"
 #include <QClipboard>
 #include <QMenu>
 #include <QMessageBox>
 
-RepositoryPropertyDialog::RepositoryPropertyDialog(BasicMainWindow *parent, GitPtr g, RepositoryItem const &item, bool open_repository_menu)
+RepositoryPropertyDialog::RepositoryPropertyDialog(BasicMainWindow *parent, GitPtr const &g, RepositoryItem const &item, bool open_repository_menu)
 	: BasicRepositoryDialog(parent, g)
 	, ui(new Ui::RepositoryPropertyDialog)
 {
@@ -115,6 +114,10 @@ void RepositoryPropertyDialog::on_pushButton_remote_add_clicked()
 
 void RepositoryPropertyDialog::on_pushButton_remote_edit_clicked()
 {
+	int row = ui->tableWidget->currentRow();
+	if (row < 0) {
+		ui->tableWidget->setCurrentCell(0, 0);
+	}
 	Git::Remote remote = selectedRemote();
 	if (execEditRemoteDialog(&remote, EditRemoteDialog::RemoteSet)) {
 		remote_changed = true;

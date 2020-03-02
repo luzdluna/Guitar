@@ -2,7 +2,6 @@
 #include "ui_JumpDialog.h"
 #include "common/joinpath.h"
 #include "common/misc.h"
-#include <QDebug>
 
 struct JumpDialog::Private {
 	MyTableWidgetDelegate delegate;
@@ -23,13 +22,14 @@ JumpDialog::JumpDialog(QWidget *parent, const NamedCommitList &items)
 
 	ui->tableWidget->setItemDelegate(&m->delegate);
 
-//	m->items = items;
 	for (NamedCommitItem const &item : items) {
 		NamedCommitItem newitem = item;
-		QString name = newitem.name;
-		QString remote = newitem.remote;
-		if (!remote.isEmpty()) {
-			newitem.name = "remotes" / remote / name;
+		if (newitem.type == NamedCommitItem::Type::BranchRemote) {
+			if (!newitem.remote.isEmpty()) {
+				newitem.name = "remotes" / newitem.remote / newitem.name;
+			}
+		} else if (newitem.type == NamedCommitItem::Type::Tag) {
+			newitem.name = "tags" / newitem.name;
 		}
 		m->items.push_back(newitem);
 	}
@@ -49,7 +49,6 @@ JumpDialog::JumpDialog(QWidget *parent, const NamedCommitList &items)
 	}
 	updateTable();
 
-	ui->tabWidget->setCurrentWidget(ui->tab_branches_tags);
 	ui->lineEdit_filter->setFocus();
 }
 
@@ -59,26 +58,17 @@ JumpDialog::~JumpDialog()
 	delete ui;
 }
 
-JumpDialog::Action JumpDialog::action() const
-{
-	QWidget *w = ui->tabWidget->currentWidget();
-	if (w == ui->tab_branches_tags) return Action::BranchsAndTags;
-	if (w == ui->tab_find_text)     return Action::CommitId;
-	return Action::None;
-}
-
 QString JumpDialog::text() const
 {
-	JumpDialog::Action a = action();
-
-	if (a == JumpDialog::Action::BranchsAndTags) {
-		return m->selected_name;
+	int row = ui->tableWidget->currentRow();
+	if (row < 0) {
+		return ui->lineEdit_filter->text();
+	} else {
+		auto *item = ui->tableWidget->item(row, 0);
+		if (item) {
+			return item->text();
+		}
 	}
-
-	if (a == JumpDialog::Action::CommitId) {
-		return ui->lineEdit_text->text();
-	}
-
 	return QString();
 }
 
@@ -86,12 +76,13 @@ void JumpDialog::sort(NamedCommitList *items)
 {
 	std::sort(items->begin(), items->end(), [](NamedCommitItem const &l, NamedCommitItem const &r){
 		auto Compare = [](NamedCommitItem const &l, NamedCommitItem const &r){
-			int i;
-			i = l.remote.compare(r.remote, Qt::CaseInsensitive);
-			if (i == 0) {
-				i = l.name.compare(r.name, Qt::CaseInsensitive);
+			if (l.type < r.type) return -1;
+			if (l.type > r.type) return 1;
+			if (l.type == NamedCommitItem::Type::BranchRemote) {
+				int i = l.remote.compare(r.remote, Qt::CaseInsensitive);
+				if (i != 0) return i;
 			}
-			return i;
+			return l.name.compare(r.name, Qt::CaseInsensitive);
 		};
 		return Compare(l, r) < 0;
 	});
@@ -109,7 +100,6 @@ void JumpDialog::internalUpdateTable(NamedCommitList const &list)
 	}
 	ui->tableWidget->resizeColumnsToContents();
 	ui->tableWidget->horizontalHeader()->setStretchLastSection(true);
-	ui->tableWidget->setCurrentCell(0, 0);
 }
 
 void JumpDialog::updateTable()
@@ -121,7 +111,7 @@ void JumpDialog::updateTable()
 		NamedCommitList list;
 		for (NamedCommitItem const &item: m->items) {
 			auto Match = [&](QString  const &name){
-				for (QString s : filter) {
+				for (QString const &s : filter) {
 					if (name.indexOf(s, 0, Qt::CaseInsensitive) < 0) {
 						return false;
 					}
@@ -152,19 +142,5 @@ void JumpDialog::on_tableWidget_currentItemChanged(QTableWidgetItem * /*current*
 	int row = ui->tableWidget->currentRow();
 	QTableWidgetItem *p = ui->tableWidget->item(row, 0);
 	m->selected_name = p ? p->text() : QString();
-}
-
-bool JumpDialog::isCheckoutChecked()
-{
-	return ui->checkBox_checkout->isChecked();
-}
-
-void JumpDialog::on_tabWidget_currentChanged(int /*index*/)
-{
-	if (ui->tabWidget->currentWidget() == ui->tab_branches_tags) {
-		ui->checkBox_checkout->setVisible(true);
-	} else {
-		ui->checkBox_checkout->setVisible(false);
-	}
 }
 

@@ -1,11 +1,12 @@
 
-#include "darktheme/DarkStyle.h"
+#include "main.h"
 #include "ApplicationGlobal.h"
 #include "MainWindow.h"
 #include "MySettings.h"
+#include "SettingGeneralForm.h"
 #include "common/joinpath.h"
 #include "common/misc.h"
-#include "main.h"
+#include "darktheme/DarkStyle.h"
 #include "platform.h"
 #include "webclient.h"
 #include <QApplication>
@@ -15,7 +16,18 @@
 #include <QProxyStyle>
 #include <QStandardPaths>
 #include <QTranslator>
+#include <signal.h>
 #include <string>
+
+#ifdef Q_OS_WIN
+#include "win32/win32.h"
+
+#include "SettingGeneralForm.h"
+#endif
+
+#ifndef APP_GUITAR
+#error APP_GUITAR is not defined.
+#endif
 
 ApplicationGlobal *global = nullptr;
 
@@ -34,12 +46,28 @@ static bool isHighDpiScalingEnabled()
 	return v.isNull() || v.toBool();
 }
 
+void setEnvironmentVariable(QString const &name, QString const &value);
+
+void onSigTerm(int)
+{
+	qDebug() << "SIGTERM caught";
+	if (global->mainwindow) {
+		global->mainwindow->close();
+	}
+}
+
+
 int main(int argc, char *argv[])
 {
-	putenv((char *)"UNICODEMAP_JP=cp932");
+#ifdef Q_OS_WIN
+	setEnvironmentVariable("UNICODEMAP_JP", "cp932");
+#else
+	setenv("UNICODEMAP_JP", "cp932", 1);
+#endif
 
 	ApplicationGlobal g;
 	global = &g;
+	signal(SIGTERM, onSigTerm);
 
 	global->organization_name = ORGANIZATION_NAME;
 	global->application_name = APPLICATION_NAME;
@@ -59,6 +87,8 @@ int main(int argc, char *argv[])
 	}
 
 	QApplication a(argc, argv);
+	a.setAttribute(Qt::AA_UseHighDpiPixmaps);
+
 	QApplication::setOrganizationName(global->organization_name);
 	QApplication::setApplicationName(global->application_name);
 
@@ -105,18 +135,28 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 
+	// 設定ファイルがないときは、言語の選択をする。
+	if (!QFileInfo::exists(global->config_file_path)) {
+		auto langs = SettingGeneralForm::languages();
+		SettingGeneralForm::execSelectLanguageDialog(nullptr, langs, [](){});
+	}
+
 	QTranslator translator;
 	{
 		if (global->language_id.isEmpty() || global->language_id == "en") {
 			// thru
 		} else {
 			QString path = ":/translations/Guitar_" + global->language_id;
-			translator.load(path, QApplication::applicationDirPath());
+			bool f = translator.load(path, QApplication::applicationDirPath());
+			if (!f) {
+				qDebug() << QString("Failed to load the translation file: %1").arg(path);
+			}
 			QApplication::installTranslator(&translator);
 		}
 	}
 
 	MainWindow w;
+	global->mainwindow = &w;
 	global->panel_bg_color = w.palette().color(QPalette::Background);
 	w.setWindowIcon(QIcon(":/image/guitar.png"));
 	w.show();
@@ -137,6 +177,8 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	return QApplication::exec();
+	int r = QApplication::exec();
+	global->mainwindow = nullptr;
+	return r;
 }
 

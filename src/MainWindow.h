@@ -36,7 +36,7 @@ public:
 
 	QColor color(unsigned int i);
 
-	bool isRemoteOnline() const override;
+	bool isOnlineMode() const override;
 private:
 	Ui::MainWindow *ui;
 
@@ -44,13 +44,12 @@ private:
 	void updateFilesList(Git::CommitItem const &commit, bool wait);
 	void updateRepositoriesList() override;
 
-	void openRepository_(GitPtr g) override;
+	void openRepository_(GitPtr g, bool keep_selection = false) override;
 
 	void prepareLogTableWidget();
 	QStringList selectedFiles_(QListWidget *listwidget) const;
 	QStringList selectedFiles() const;
-	void for_each_selected_files(std::function<void (QString const &)> fn);
-//	void updateCommitGraph();
+	void for_each_selected_files(std::function<void (QString const &)> const &fn);
 	void showFileList(FilesListType files_list_type);
 
 	void clearLog();
@@ -61,7 +60,6 @@ private:
 	int repositoryIndex_(const QTreeWidgetItem *item) const;
 	RepositoryItem const *repositoryItem(const QTreeWidgetItem *item) const;
 
-	int selectedLogIndex() const override;
 	QTreeWidgetItem *newQTreeWidgetFolderItem(QString const &name);
 	void buildRepoTree(QString const &group, QTreeWidgetItem *item, QList<RepositoryItem> *repos);
 	void refrectRepositories();
@@ -70,30 +68,38 @@ private:
 	void updateDiffView();
 	void updateUnstagedFileCurrentItem();
 	void updateStagedFileCurrentItem();
-	void updateStatusBarText();
+	void updateStatusBarText() override;
 	void setRepositoryInfo(QString const &reponame, QString const &brname) override;
 	int indexOfRepository(const QTreeWidgetItem *treeitem) const;
 	void clearRepoFilter();
 	void appendCharToRepoFilter(ushort c);
 	void backspaceRepoFilter();
 	void revertCommit();
-	void cherrypick(Git::CommitItem const *commit);
-	void mergeBranch(Git::CommitItem const *commit);
+	void mergeBranch(const QString &commit, Git::MergeFastForward ff);
+	void mergeBranch(Git::CommitItem const *commit, Git::MergeFastForward ff);
 	void rebaseBranch(Git::CommitItem const *commit);
-	void detectGitServerType(GitPtr g);
-	void setRemoteOnline(bool f);
+	void cherrypick(Git::CommitItem const *commit);
+	void merge(const Git::CommitItem *commit = nullptr);
+	void detectGitServerType(const GitPtr &g);
+	void setRemoteOnline(bool f, bool save);
 	void startTimers();
 	void onCloneCompleted(bool success, const QVariant &userdata);
-//	bool fetch(GitPtr g, bool prune);
-	void setNetworkingCommandsEnabled(bool f);
+	void setNetworkingCommandsEnabled(bool enabled);
 	void blame(QListWidgetItem *item);
 	void blame();
 	QListWidgetItem *currentFileItem() const;
 	void execAreYouSureYouWantToContinueConnectingDialog();
 	void deleteRemoteBranch(Git::CommitItem const *commit);
 	QStringList remoteBranches(QString const &id, QStringList *all);
-	void setWatchRemoteInterval(int mins);
+	bool isUninitialized();
+	void doLogCurrentItemChanged();
+	void findNext();
+	void findText(const QString &text);
+	void showStatus();
+	void onStartEvent();
+	void showLogWindow(bool show);
 protected:
+	void customEvent(QEvent *);
 	void dragEnterEvent(QDragEnterEvent *event) override;
 	void timerEvent(QTimerEvent *) override;
 	void keyPressEvent(QKeyEvent *event) override;
@@ -112,8 +118,13 @@ public:
 	void updateCurrentFilesList();
 	void notifyRemoteChanged(bool f);
 	void postOpenRepositoryFromGitHub(const QString &username, const QString &reponame);
+	int selectedLogIndex() const override;
+	void updateAncestorCommitMap();
+	bool isAncestorCommit(const QString &id);
+	void test();
+	void postStartEvent();
 private slots:
-	void doUpdateButton();
+	void updateUI();
 	void onLogVisibilityChanged();
 	void onPtyProcessCompleted(bool ok, const QVariant &userdata);
 	void onRepositoriesTreeDropped();
@@ -131,8 +142,10 @@ private slots:
 	void on_action_edit_tags_triggered();
 	void on_action_exit_triggered();
 	void on_action_explorer_triggered();
-	void on_action_fetch_prune_triggered();
 	void on_action_fetch_triggered();
+	void on_action_fetch_prune_triggered();
+	void on_action_find_next_triggered();
+	void on_action_find_triggered();
 	void on_action_offline_triggered();
 	void on_action_online_triggered();
 	void on_action_open_existing_working_copy_triggered();
@@ -142,8 +155,11 @@ private slots:
 	void on_action_push_u_triggered();
 	void on_action_reflog_triggered();
 	void on_action_repo_checkout_triggered();
+	void on_action_repo_jump_to_head_triggered();
 	void on_action_repo_jump_triggered();
+	void on_action_repositories_panel_triggered();
 	void on_action_repository_property_triggered();
+	void on_action_repository_status_triggered();
 	void on_action_reset_HEAD_1_triggered();
 	void on_action_reset_hard_triggered();
 	void on_action_set_config_user_triggered();
@@ -153,7 +169,6 @@ private slots:
 	void on_action_stash_triggered();
 	void on_action_stop_process_triggered();
 	void on_action_terminal_triggered();
-	void on_action_test_triggered();
 	void on_action_view_refresh_triggered();
 	void on_action_window_log_triggered(bool checked);
 	void on_horizontalScrollBar_log_valueChanged(int);
@@ -181,6 +196,7 @@ private slots:
 	void on_toolButton_push_clicked();
 	void on_toolButton_select_all_clicked();
 	void on_toolButton_stage_clicked();
+	void on_toolButton_status_clicked();
 	void on_toolButton_stop_process_clicked();
 	void on_toolButton_terminal_clicked();
 	void on_toolButton_unstage_clicked();
@@ -188,12 +204,24 @@ private slots:
 	void on_treeWidget_repos_customContextMenuRequested(const QPoint &pos);
 	void on_treeWidget_repos_itemDoubleClicked(QTreeWidgetItem *item, int column);
 	void on_verticalScrollBar_log_valueChanged(int);
+	void on_action_repo_merge_triggered();
+
+	void on_action_expand_commit_log_triggered();
+
+	void on_action_expand_file_list_triggered();
+
+	void on_action_expand_diff_view_triggered();
+
+	void on_action_wide_triggered();
+
+	void on_action_sidebar_triggered();
+
+
 protected:
 	void closeEvent(QCloseEvent *event) override;
 	void internalWriteLog(const char *ptr, int len) override;
 	RepositoryItem const *selectedRepositoryItem() const override;
 	void removeSelectedRepositoryFromBookmark(bool ask) override;
-	void setRemoteMonitoringEnabled(bool enable) override;
 protected slots:
 	void onLogIdle();
 signals:

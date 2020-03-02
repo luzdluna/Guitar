@@ -37,7 +37,8 @@ struct TreeLine {
 struct NamedCommitItem {
 	enum class Type {
 		None,
-		Branch,
+		BranchLocal,
+		BranchRemote,
 		Tag,
 	};
 	Type type = Type::None;
@@ -152,7 +153,7 @@ public:
 		bool has_child = false;
 		int marker_depth = -1;
 		bool resolved =  false;
-
+		bool strange_date = false;
 	};
 	using CommitItemList = std::vector<CommitItem>;
 
@@ -215,6 +216,12 @@ public:
 		Unmerged_BothAdded,
 		Unmerged_BothModified,
 		Tracked_ = 0xf0000000
+	};
+
+	enum class MergeFastForward {
+		Default,
+		No,
+		Only,
 	};
 
 	class FileStatus {
@@ -304,13 +311,12 @@ private:
 	Private *m;
 	QStringList make_branch_list_();
 	QByteArray cat_file_(QString const &id);
-	FileStatusList status_();
+	FileStatusList status_s_();
 	bool commit_(QString const &msg, bool amend, bool sign, AbstractPtyProcess *pty);
 	bool push_(bool tags, AbstractPtyProcess *pty);
 	static void parseAheadBehind(QString const &s, Branch *b);
 	Git();
 	QString encodeQuotedText(QString const &str);
-	QStringList refs();
 public:
 	Git(Context const &cx, QString const &repodir);
 	Git(Git &&r) = delete;
@@ -352,7 +358,7 @@ public:
 	static CloneData preclone(QString const &url, QString const &path);
 	bool clone(CloneData const &data, AbstractPtyProcess *pty);
 
-	FileStatusList status();
+	FileStatusList status_s();
 	bool cat_file(QString const &id, QByteArray *out);
 	void resetFile(QString const &path);
 	void resetAllFiles();
@@ -366,6 +372,7 @@ public:
 	void pull(AbstractPtyProcess *pty = nullptr);
 
 	void fetch(AbstractPtyProcess *pty = nullptr, bool prune = false);
+	void fetch_tags_f(AbstractPtyProcess *pty);
 
 	QList<Branch> branches();
 
@@ -391,8 +398,9 @@ public:
 
 	QList<DiffRaw> diff_raw(QString const &old_id, QString const &new_id);
 
-	static bool isValidID(QString const &s);
+	static bool isValidID(QString const &id);
 
+	QString status();
 	bool commit(QString const &text, bool sign, AbstractPtyProcess *pty);
 	bool commit_amend_m(QString const &text, bool sign, AbstractPtyProcess *pty);
 	bool revert(QString const &id);
@@ -400,7 +408,7 @@ public:
 	void getRemoteURLs(QList<Remote> *out);
 	void createBranch(QString const &name);
 	void checkoutBranch(QString const &name);
-	void mergeBranch(QString const &name);
+	void mergeBranch(QString const &name, MergeFastForward ff);
 	void rebaseBranch(QString const &name);
 	static bool isValidWorkingCopy(QString const &dir);
 	QString diff_to_file(QString const &old_id, QString const &path);
@@ -409,6 +417,7 @@ public:
 	GitPtr dup() const;
 	QString rev_parse(QString const &name);
 	QList<Tag> tags();
+	QList<Tag> tags2();
 	bool tag(QString const &name, QString const &id = QString());
 	void delete_tag(QString const &name, bool remote);
 	void setRemoteURL(QString const &name, QString const &url);
@@ -436,12 +445,15 @@ public:
 	QString objectType(QString const &id);
 	bool rm_cached(QString const &file);
 	void cherrypick(QString const &name);
+	QString getCherryPicking() const;
+
+	QString getMessage(const QString &id);
 
 	struct ReflogItem {
 		QString id;
 		QString head;
 		QString command;
-		QString comment;
+		QString message;
 		struct File {
 			QString atts_a;
 			QString atts_b;
@@ -477,6 +489,7 @@ public:
 	bool stash();
 	bool stash_apply();
 	bool stash_drop();
+
 };
 
 void parseDiff(std::string const &s, Git::Diff const *info, Git::Diff *out);

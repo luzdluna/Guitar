@@ -4,6 +4,8 @@
 #include <QPainter>
 #include <QProxyStyle>
 
+class QStyleOptionViewItem;
+
 class DarkStyle : public QProxyStyle {
 public:
 private:
@@ -35,12 +37,13 @@ private:
 
 	void drawNinePatchImage(QPainter *p, QImage const &image, QRect const &r, int w, int h) const;
 	void drawGutter(QPainter *p, QRect const &r) const;
-	void drawSelectedItemFrame(const QStyleOption *option, QPainter *p, QRect rect, QWidget const *widget, bool deep = false) const;
-	void drawSelectionFrame(QPainter *p, const QRect &rect, double margin) const;
+	void drawSelectedItemFrame(QPainter *p, QRect rect, bool focus) const;
+	void drawFocusFrame(QPainter *p, const QRect &rect, int margin) const;
 	void drawButton(QPainter *p, QStyleOption const *option, bool mac_margin = true) const;
 	void drawToolButton(QPainter *p, QStyleOption const *option) const;
 	void drawMenuBarBG(QPainter *p, const QStyleOption *option, const QWidget *widget) const;
 	QColor color(int level, int alpha = 255) const;
+	void drawItemViewText(QPainter *p, const QStyleOptionViewItem *option, const QRect &rect, bool abbreviation) const;
 public:
 	DarkStyle(const QColor &base_color = QColor());
 	~DarkStyle() override;
@@ -52,6 +55,7 @@ public:
 	void polish(QPalette &palette) override;
 	int pixelMetric(PixelMetric metric, const QStyleOption *option, const QWidget *widget) const override;
 	QRect subControlRect(ComplexControl cc, const QStyleOptionComplex *option, SubControl sc, const QWidget *widget) const override;
+	int styleHint(StyleHint stylehint, const QStyleOption *opt = nullptr, const QWidget *widget = nullptr, QStyleHintReturn *returnData = nullptr) const override;
 	void drawPrimitive(PrimitiveElement pe, const QStyleOption *option, QPainter *p, const QWidget *widget) const override;
 	void drawControl(ControlElement ce, const QStyleOption *option, QPainter *p, const QWidget *widget) const override;
 	void drawComplexControl(ComplexControl cc, const QStyleOptionComplex *option, QPainter *p, const QWidget *widget) const override;

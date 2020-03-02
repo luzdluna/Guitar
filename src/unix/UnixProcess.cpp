@@ -1,14 +1,14 @@
 #include "UnixProcess.h"
-#include <stdlib.h>
-#include <unistd.h>
-#include <time.h>
-#include <sys/types.h>
-#include <sys/wait.h>
-#include <sys/time.h>
 #include <QDebug>
 #include <QMutex>
 #include <QThread>
+#include <cstdlib>
+#include <ctime>
 #include <deque>
+#include <sys/time.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
 
 class OutputReaderThread : public QThread {
 private:
@@ -106,7 +106,7 @@ protected:
 			}
 
 			if (pid == 0) { // child
-				putenv(const_cast<char *>("LANG=C"));
+				setenv("LANG", "C", 1);
 				close(stdin_pipe[W]);
 				close(stdout_pipe[R]);
 				close(stderr_pipe[R]);
@@ -138,15 +138,13 @@ protected:
 				closeInput();
 			}
 
-//			WriteThread t0(fd_in_read, mutex, &input, &close_input_later);
 			OutputReaderThread t1(fd_out_write, mutex, &outq);
 			OutputReaderThread t2(fd_err_write, mutex, &errq);
-//			if (use_input) t0.start();
 			t1.start();
 			t2.start();
 
 			while (1) {
-				QThread::currentThread()->msleep(1);
+				QThread::msleep(1);
 				int status = 0;
 				if (waitpid(pid, &status, WNOHANG) == pid) {
 					if (WIFEXITED(status)) {
@@ -182,14 +180,11 @@ protected:
 				}
 			}
 
-//			if (use_input) {
-//				t0.requestInterruption();
-//				t0.wait();
-//			}
 			t1.wait();
 			t2.wait();
 
 			close(fd_out_write);
+			close(fd_err_write);
 
 		} catch (std::string const &e) {
 			close(stdin_pipe[R]);

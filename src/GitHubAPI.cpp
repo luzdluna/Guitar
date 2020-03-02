@@ -1,13 +1,11 @@
 
-#include "BasicMainWindow.h"
 #include "GitHubAPI.h"
-
-#include "webclient.h"
-#include "common/misc.h"
-#include "charvec.h"
-#include "urlencode.h"
+#include "BasicMainWindow.h"
 #include "MemoryReader.h"
-
+#include "charvec.h"
+#include "common/misc.h"
+#include "urlencode.h"
+#include "webclient.h"
 #include <QDebug>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -41,7 +39,7 @@ void GitHubRequestThread::start(BasicMainWindow *mainwindow)
 void GitHubRequestThread::run()
 {
 	ok = false;
-	if (web()->get(WebClient::URL(url)) == 200) {
+	if (web()->get(WebClient::Request(url)) == 200) {
 		WebClient::Response const &r = web()->response();
 		if (!r.content.empty()) {
 			text = to_stdstr(r.content);
@@ -82,7 +80,7 @@ QList<GitHubAPI::SearchResultItem> GitHubAPI::searchRepository(std::string const
 		QByteArray ba(th.text.c_str(), th.text.size());
 		QJsonDocument doc = QJsonDocument::fromJson(ba);
 		QJsonArray a1 = doc.object().value("items").toArray();
-		for (QJsonValue const &v1 : a1) {
+		for (QJsonValueRef const &v1 : a1) {
 			QJsonObject o1 = v1.toObject();
 			SearchResultItem item;
 			auto String = [&](QString const &key){

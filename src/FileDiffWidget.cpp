@@ -1,19 +1,13 @@
-#include <memory>
-
-#include <memory>
-
-#include "FileDiffWidget.h"
-#include "ui_FileDiffWidget.h"
-
-#include "BigDiffWindow.h"
-#include "GitDiff.h"
-#include "common/joinpath.h"
-#include "MainWindow.h"
-#include "common/misc.h"
 
 #include "ApplicationGlobal.h"
+#include "BigDiffWindow.h"
+#include "FileDiffWidget.h"
+#include "GitDiff.h"
+#include "MainWindow.h"
 #include "Theme.h"
-
+#include "common/joinpath.h"
+#include "common/misc.h"
+#include "ui_FileDiffWidget.h"
 #include <QBuffer>
 #include <QDebug>
 #include <QKeyEvent>
@@ -21,6 +15,7 @@
 #include <QPainter>
 #include <QStyle>
 #include <QTextCodec>
+#include <memory>
 
 enum {
 	DiffIndexRole = Qt::UserRole,
@@ -28,7 +23,7 @@ enum {
 
 struct FileDiffWidget::Private {
 	BasicMainWindow *mainwindow = nullptr;
-	InitParam_ init_param_;
+	FileDiffWidget::InitParam_ init_param_;
 	Git::CommitItemList commit_item_list;
 	std::vector<std::string> original_lines;
 	TextEditorEnginePtr engine_left;
@@ -128,7 +123,7 @@ GitPtr FileDiffWidget::git()
 	return mainwindow()->git();
 }
 
-Git::Object FileDiffWidget::cat_file(GitPtr /*g*/, QString const &id)
+Git::Object FileDiffWidget::cat_file(GitPtr const &/*g*/, QString const &id)
 {
 	return mainwindow()->cat_file(id);
 }
@@ -495,7 +490,7 @@ void FileDiffWidget::setSideBySide_(QByteArray const &ba_a, QByteArray const &ba
 	}
 }
 
-QString FileDiffWidget::diffObjects(GitPtr g, QString const &a_id, QString const &b_id)
+QString FileDiffWidget::diffObjects(GitPtr const &g, QString const &a_id, QString const &b_id)
 {
 	if (m->text_codec) {
 		Git::Object obj_a = mainwindow()->cat_file_(g, a_id);
@@ -572,7 +567,7 @@ void FileDiffWidget::updateDiffView(Git::Diff const &info, bool uncommited)
 	}
 }
 
-void FileDiffWidget::updateDiffView(QString id_left, QString id_right, QString const &path)
+void FileDiffWidget::updateDiffView(QString const &id_left, QString const &id_right, QString const &path)
 {
 	GitPtr g = git();
 	if (!g) return;
@@ -655,6 +650,10 @@ void FileDiffWidget::onDiffWidgetResized()
 
 void FileDiffWidget::on_toolButton_fullscreen_clicked()
 {
+	if (m->init_param_.diff.blob.a_id.isEmpty() && m->init_param_.diff.blob.b_id.isEmpty()) {
+		return;
+	}
+
 	BigDiffWindow win(mainwindow());
 	win.setWindowState(Qt::WindowMaximized);
 	win.init(mainwindow(), m->init_param_);
