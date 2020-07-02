@@ -23,6 +23,7 @@
 #include "SettingsDialog.h"
 #include "StatusLabel.h"
 #include "TextEditDialog.h"
+#include "UserEvent.h"
 #include "common/joinpath.h"
 #include "common/misc.h"
 #include "CherryPickDialog.h"
@@ -40,17 +41,6 @@
 #include <QStandardPaths>
 #include <QTimer>
 
-enum class CustomEvent {
-	Start = QEvent::User,
-};
-
-class StartEvent : public QEvent {
-public:
-	StartEvent()
-		: QEvent((QEvent::Type)CustomEvent::Start)
-	{
-	}
-};
 
 FileDiffWidget::DrawData::DrawData()
 {
@@ -107,6 +97,8 @@ MainWindow::MainWindow(QWidget *parent)
 	ui->widget_diff_view->bind(this);
 
 	qApp->installEventFilter(this);
+
+	setShowLabels(appsettings()->show_labels, false);
 
 	ui->widget_log->setupForLogWidget(ui->verticalScrollBar_log, ui->horizontalScrollBar_log, themeForTextEditor());
 	onLogVisibilityChanged();
@@ -179,6 +171,8 @@ MainWindow::MainWindow(QWidget *parent)
 			setWindowState(state);
 		}
 	}
+
+	ui->action_sidebar->setChecked(true);
 
 	startTimers();
 }
@@ -260,6 +254,7 @@ void MainWindow::onStartEvent()
 		setGitCommand(appsettings()->git_command, false);
 		setFileCommand(appsettings()->file_command, false);
 		setGpgCommand(appsettings()->gpg_command, false);
+		setSshCommand(appsettings()->ssh_command, false);
 
 		// メインウィンドウのタイトルを設定
 		updateWindowTitle(git());
@@ -435,7 +430,7 @@ bool MainWindow::event(QEvent *event)
 
 void MainWindow::customEvent(QEvent *e)
 {
-	if (e->type() == (QEvent::Type)CustomEvent::Start) {
+	if (e->type() == (QEvent::Type)UserEvent::Start) {
 		onStartEvent();
 		return;
 	}
@@ -573,18 +568,18 @@ QColor MainWindow::color(unsigned int i)
 	return Qt::black;
 }
 
-QString MainWindow::currentWorkingCopyDir() const
-{
-	QString workdir = BasicMainWindow::currentWorkingCopyDir();
-	if (workdir.isEmpty()) {
-		RepositoryItem const *repo = selectedRepositoryItem();
-		if (repo) {
-			workdir = repo->local_dir;
-			return workdir;
-		}
-	}
-	return workdir;
-}
+//QString MainWindow::currentWorkingCopyDir() const
+//{
+//	QString workdir = BasicMainWindow::currentWorkingCopyDir();
+//	if (workdir.isEmpty()) {
+//		RepositoryItem const *repo = selectedRepositoryItem();
+//		if (repo) {
+//			workdir = repo->local_dir;
+//			return workdir;
+//		}
+//	}
+//	return workdir;
+//}
 
 RepositoryItem const *BasicMainWindow::findRegisteredRepository(QString *workdir) const
 {
@@ -619,7 +614,7 @@ int MainWindow::repositoryIndex_(QTreeWidgetItem const *item) const
 RepositoryItem const *MainWindow::repositoryItem(QTreeWidgetItem const *item) const
 {
 	int row = repositoryIndex_(item);
-	auto const &repos = getRepos();
+	QList<RepositoryItem> const &repos = getRepos();
 	return (row >= 0 && row < repos.size()) ? &repos[row] : nullptr;
 }
 
@@ -1531,7 +1526,7 @@ void MainWindow::on_treeWidget_repos_customContextMenuRequested(const QPoint &po
 				return;
 			}
 			if (a == a_properties) {
-				execRepositoryPropertyDialog(repo->local_dir);
+				execRepositoryPropertyDialog(*repo);
 				return;
 			}
 		}
@@ -2593,7 +2588,7 @@ void MainWindow::blame()
 
 void MainWindow::on_action_repository_property_triggered()
 {
-	execRepositoryPropertyDialog(currentWorkingCopyDir());
+	execRepositoryPropertyDialog(currentRepository());
 }
 
 void MainWindow::on_action_set_gpg_signing_triggered()
@@ -2939,10 +2934,10 @@ void MainWindow::on_action_sidebar_triggered()
 	bool f = ui->stackedWidget_leftpanel->isVisible();
 	f = !f;
 	ui->stackedWidget_leftpanel->setVisible(f);
+	ui->action_sidebar->setChecked(f);
 }
 
-
-
+#if 0
 void MainWindow::on_action_wide_triggered()
 {
 	QWidget *w = focusWidget();
@@ -2962,6 +2957,33 @@ void MainWindow::on_action_wide_triggered()
 			ui->splitter_h->setSizes({1, 1, 10000});
 		}
 	}
+}
+#endif
+
+void MainWindow::setShowLabels(bool show, bool save)
+{
+	ApplicationSettings *as = appsettings();
+	as->show_labels = show;
+
+	bool b = ui->action_show_labels->blockSignals(true);
+	ui->action_show_labels->setChecked(show);
+	ui->action_show_labels->blockSignals(b);
+
+	if (save) {
+		saveApplicationSettings();
+	}
+}
+
+bool MainWindow::isLabelsVisible() const
+{
+	return appsettings()->show_labels;
+}
+
+void MainWindow::on_action_show_labels_triggered()
+{
+	bool f = ui->action_show_labels->isChecked();
+	setShowLabels(f, true);
+	ui->tableWidget_log->viewport()->update();
 }
 
 void MainWindow::test()
@@ -2985,6 +3007,7 @@ void MainWindow::test()
 	}
 	qDebug() << QString("%1ms").arg(t.elapsed());
 }
+
 
 
 

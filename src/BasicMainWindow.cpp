@@ -24,6 +24,7 @@
 #include "SettingsDialog.h"
 #include "Terminal.h"
 #include "TextEditDialog.h"
+#include "UserEvent.h"
 #include "WelcomeWizardDialog.h"
 #include "common/joinpath.h"
 #include "common/misc.h"
@@ -176,29 +177,12 @@ QString BasicMainWindow::gitCommand() const
 
 namespace {
 
-enum UserEvent {
-	EventUserFunction = QEvent::User,
-};
-
-class UserFunctionEvent : public QEvent {
-public:
-	std::function<void(QVariant &)> func;
-	QVariant var;
-
-	explicit UserFunctionEvent(std::function<void(QVariant const &)> const &func, QVariant const &var)
-		: QEvent((QEvent::Type)EventUserFunction)
-		, func(func)
-		, var(var)
-	{
-	}
-};
-
 } // namespace
 
 bool BasicMainWindow::event(QEvent *event)
 {
 	if (event->type() == (QEvent::Type)EventUserFunction) {
-		if (auto *e = dynamic_cast<UserFunctionEvent *>(event)) {
+		if (auto *e = (UserFunctionEvent *)event) {
 			e->func(e->var);
 			return true;
 		}
@@ -249,11 +233,9 @@ void BasicMainWindow::autoOpenRepository(QString dir)
 	}
 }
 
-GitPtr BasicMainWindow::git(QString const &dir) const
+GitPtr BasicMainWindow::git(QString const &dir, QString const &sshkey) const
 {
-//	const_cast<BasicMainWindow *>(this)->checkGitCommand();
-
-	GitPtr g = std::make_shared<Git>(m->gcx, dir);
+	GitPtr g = std::make_shared<Git>(m->gcx, dir, sshkey);
 	if (g && QFileInfo(g->gitCommand()).isExecutable()) {
 		g->setLogCallback(git_callback, (void *)this);
 		return g;
@@ -266,7 +248,9 @@ GitPtr BasicMainWindow::git(QString const &dir) const
 
 GitPtr BasicMainWindow::git()
 {
-	return git(currentWorkingCopyDir());
+	RepositoryItem const &item = currentRepository();
+//	return git(currentWorkingCopyDir());
+	return git(item.local_dir, item.ssh_key);
 }
 
 QPixmap BasicMainWindow::getTransparentPixmap()
@@ -363,12 +347,12 @@ bool BasicMainWindow::saveAs(QString const &id, QString const &dstpath)
 	}
 }
 
-bool BasicMainWindow::testRemoteRepositoryValidity(QString const &url)
+bool BasicMainWindow::testRemoteRepositoryValidity(QString const &url, QString const &sshkey)
 {
 	bool ok;
 	{
 		OverrideWaitCursor;
-		ok = isValidRemoteURL(url);
+		ok = isValidRemoteURL(url, sshkey);
 	}
 
 	QString pass = tr("The URL is a valid repository");
@@ -602,6 +586,21 @@ QString BasicMainWindow::selectGpgCommand(bool save)
 	cmdlist.push_back(GPG_COMMAND);
 	cmdlist.push_back(GPG2_COMMAND);
 	return selectCommand_("GPG", cmdlist, list, path, fn);
+}
+
+QString BasicMainWindow::selectSshCommand(bool save)
+{
+	QString path = m->gcx.ssh_command;
+
+	auto fn = [&](QString const &path){
+		setSshCommand(path, save);
+	};
+
+	QStringList list = whichCommand_(SSH_COMMAND);
+
+	QStringList cmdlist;
+	cmdlist.push_back(SSH_COMMAND);
+	return selectCommand_("ssh", cmdlist, list, path, fn);
 }
 
 Git::Branch const &BasicMainWindow::currentBranch() const
@@ -1368,10 +1367,6 @@ QStringList BasicMainWindow::whichCommand_(QString const &cmdfile1, QString cons
 	return list;
 }
 
-
-
-
-
 void BasicMainWindow::setWindowTitle_(Git::User const &user)
 {
 	if (user.name.isEmpty() && user.email.isEmpty()) {
@@ -1521,13 +1516,13 @@ QString BasicMainWindow::getCommitIdFromTag(QString const &tag)
 	return getObjCache()->getCommitIdFromTag(tag);
 }
 
-bool BasicMainWindow::isValidRemoteURL(QString const &url)
+bool BasicMainWindow::isValidRemoteURL(QString const &url, QString const &sshkey)
 {
 	if (url.indexOf('\"') >= 0) {
 		return false;
 	}
 	stopPtyProcess();
-	GitPtr g = git(QString());
+	GitPtr g = git(QString(), sshkey);
 	QString cmd = "ls-remote \"%1\" HEAD";
 	cmd = cmd.arg(url);
 	bool f = g->git(cmd, false, false, getPtyProcess());
@@ -1870,6 +1865,11 @@ void BasicMainWindow::abortPtyProcess()
 	setInteractionCanceled(true);
 }
 
+void BasicMainWindow::saveApplicationSettings()
+{
+	SettingsDialog::saveSettings(&m->appsettings);
+}
+
 bool BasicMainWindow::execWelcomeWizardDialog()
 {
 	WelcomeWizardDialog dlg(this);
@@ -1878,7 +1878,7 @@ bool BasicMainWindow::execWelcomeWizardDialog()
 	dlg.set_default_working_folder(appsettings()->default_working_dir);
 	if (misc::isExecutable(appsettings()->git_command)) {
 		gitCommand() = appsettings()->git_command;
-		Git g(m->gcx, QString());
+		Git g(m->gcx, {}, {});
 		Git::User user = g.getUser(Git::Source::Global);
 		dlg.set_user_name(user.name);
 		dlg.set_user_email(user.email);
@@ -1887,7 +1887,7 @@ bool BasicMainWindow::execWelcomeWizardDialog()
 		appsettings()->git_command  = gitCommand()   = dlg.git_command_path();
 		appsettings()->file_command = global->file_command = dlg.file_command_path();
 		appsettings()->default_working_dir = dlg.default_working_folder();
-		SettingsDialog::saveSettings(&m->appsettings);
+		saveApplicationSettings();
 
 		if (misc::isExecutable(appsettings()->git_command)) {
 			GitPtr g = git();
@@ -1902,24 +1902,19 @@ bool BasicMainWindow::execWelcomeWizardDialog()
 	return false;
 }
 
-void BasicMainWindow::execRepositoryPropertyDialog(QString workdir, bool open_repository_menu)
+void BasicMainWindow::execRepositoryPropertyDialog(RepositoryItem const &repo, bool open_repository_menu)
 {
+	QString workdir = repo.local_dir;
+
 	if (workdir.isEmpty()) {
 		workdir = currentWorkingCopyDir();
 	}
-	QString name;
-	RepositoryItem const *repo = findRegisteredRepository(&workdir);
-	if (repo) {
-		name = repo->name;
-	} else {
-		QMessageBox::warning(this, tr("Repository Property"), tr("Not a valid git repository") + "\n\n" + workdir);
-		return;
-	}
+	QString name = repo.name;
 	if (name.isEmpty()) {
 		name = makeRepositoryName(workdir);
 	}
-	GitPtr g = git(workdir);
-	RepositoryPropertyDialog dlg(this, g, *repo, open_repository_menu);
+	GitPtr g = git(workdir, repo.ssh_key);
+	RepositoryPropertyDialog dlg(this, &m->gcx, g, repo, open_repository_menu);
 	dlg.exec();
 	if (dlg.isRemoteChanged()) {
 		emit remoteInfoChanged();
@@ -1961,6 +1956,11 @@ void BasicMainWindow::setGpgCommand(QString const &path, bool save)
 	}
 }
 
+void BasicMainWindow::setSshCommand(QString const &path, bool save)
+{
+	internalSetCommand(path, save, "SshCommand", &m->gcx.ssh_command);
+}
+
 void BasicMainWindow::logGitVersion()
 {
 	GitPtr g = git();
@@ -1975,7 +1975,7 @@ void BasicMainWindow::setUnknownRepositoryInfo()
 {
 	setRepositoryInfo("---", "");
 
-	Git g(m->gcx, QString());
+	Git g(m->gcx, {}, {});
 	Git::User user = g.getUser(Git::Source::Global);
 	setWindowTitle_(user);
 }
@@ -1990,7 +1990,7 @@ void BasicMainWindow::internalClearRepositoryInfo()
 
 void BasicMainWindow::checkUser()
 {
-	Git g(m->gcx, QString());
+	Git g(m->gcx, {}, {});
 	while (1) {
 		Git::User user = g.getUser(Git::Source::Global);
 		if (!user.name.isEmpty() && !user.email.isEmpty()) {
@@ -2286,7 +2286,7 @@ void BasicMainWindow::clone(QString url, QString dir)
 
 	while (1) {
 		dir = defaultWorkingDir();
-		CloneDialog dlg(this, url, dir);
+		CloneDialog dlg(this, url, dir, &m->gcx);
 		if (dlg.exec() != QDialog::Accepted) {
 			return;
 		}
@@ -2342,8 +2342,9 @@ void BasicMainWindow::clone(QString url, QString dir)
 			data.local_dir = dir;
 			data.local_dir.replace('\\', '/');
 			data.name = makeRepositoryName(dir);
+			data.ssh_key = dlg.overridedSshKey();
 
-			GitPtr g = git(QString());
+			GitPtr g = git(QString(), data.ssh_key);
 			setPtyUserData(QVariant::fromValue<RepositoryItem>(data));
 			setPtyCondition(PtyCondition::Clone);
 			setPtyProcessOk(true);
@@ -2500,7 +2501,8 @@ void BasicMainWindow::push()
 
 	if (g->getRemotes().isEmpty()) {
 		QMessageBox::warning(this, qApp->applicationName(), tr("No remote repository is registered."));
-		execRepositoryPropertyDialog(QString(), true);
+		RepositoryItem const &repo = currentRepository();
+		execRepositoryPropertyDialog(repo, true);
 		return;
 	}
 
@@ -2857,7 +2859,10 @@ void BasicMainWindow::createRepository(QString const &dir)
 					QString remote_name = dlg.remoteName();
 					QString remote_url = dlg.remoteURL();
 					if (!remote_name.isEmpty() && !remote_url.isEmpty()) {
-						g->addRemoteURL(remote_name, remote_url);
+						Git::Remote r;
+						r.name = remote_name;
+						r.url = remote_url;
+						g->addRemoteURL(r);
 					}
 				}
 			}

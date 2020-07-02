@@ -91,10 +91,12 @@ void SettingsDialog::loadSettings(ApplicationSettings *as)
 	GetValue<QString>(s, "GitCommand")                       >> as->git_command;
 	GetValue<QString>(s, "FileCommand")                      >> as->file_command;
 	GetValue<QString>(s, "GpgCommand")                       >> as->gpg_command;
+	GetValue<QString>(s, "SshCommand")                       >> as->ssh_command;
 	s.endGroup();
 
 	s.beginGroup("UI");
 	GetValue<bool>(s, "EnableHighDpiScaling")                >> as->enable_high_dpi_scaling;
+	GetValue<bool>(s, "ShowLabels")                          >> as->show_labels;
 	s.endGroup();
 
 	s.beginGroup("Network");
@@ -120,10 +122,12 @@ void SettingsDialog::saveSettings(ApplicationSettings const *as)
 	SetValue<QString>(s, "GitCommand")                       << as->git_command;
 	SetValue<QString>(s, "FileCommand")                      << as->file_command;
 	SetValue<QString>(s, "GpgCommand")                       << as->gpg_command;
+	SetValue<QString>(s, "SshCommand")                       << as->ssh_command;
 	s.endGroup();
 
 	s.beginGroup("UI");
 	SetValue<bool>(s, "EnableHighDpiScaling")                << as->enable_high_dpi_scaling;
+	SetValue<bool>(s, "ShowLabels")                          << as->show_labels;
 	s.endGroup();
 
 	s.beginGroup("Network");

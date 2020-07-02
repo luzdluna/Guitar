@@ -19,6 +19,8 @@ using callback_t = Git::callback_t;
 
 struct Git::Private {
 	QString git_command;
+	QString ssh_command;// = "C:/Program Files/Git/usr/bin/ssh.exe";
+	QString ssh_key_override;// = "C:/a/id_rsa";
 	std::vector<char> result;
 	QString error_message;
 	int process_exit_code = 0;
@@ -32,11 +34,11 @@ Git::Git()
 {
 }
 
-Git::Git(const Context &cx, QString const &repodir)
+Git::Git(const Context &cx, QString const &repodir, const QString &sshkey)
 	: m(new Private)
 {
-	setGitCommand(cx.git_command);
-	setWorkingRepositoryDir(repodir);
+	setGitCommand(cx.git_command, cx.ssh_command);
+	setWorkingRepositoryDir(repodir, sshkey);
 }
 
 Git::~Git()
@@ -50,14 +52,25 @@ void Git::setLogCallback(callback_t func, void *cookie)
 	m->callback_cookie = cookie;
 }
 
-void Git::setWorkingRepositoryDir(QString const &repo)
+void Git::setWorkingRepositoryDir(QString const &repo, QString const &sshkey)
 {
 	m->working_repo_dir = repo;
+	m->ssh_key_override = sshkey;
 }
 
 QString const &Git::workingRepositoryDir() const
 {
 	return m->working_repo_dir;
+}
+
+QString const &Git::sshKey() const
+{
+	return m->ssh_key_override;
+}
+
+void Git::setSshKey(QString const &sshkey) const
+{
+	m->ssh_key_override = sshkey;
 }
 
 bool Git::isValidID(QString const &id)
@@ -100,9 +113,10 @@ QString Git::resultText() const
 {
 	return QString::fromUtf8(toQByteArray());
 }
-void Git::setGitCommand(QString const &path)
+void Git::setGitCommand(QString const &gitcmd, QString const &sshcmd)
 {
-	m->git_command = path;
+	m->git_command = gitcmd;
+	m->ssh_command = sshcmd;
 }
 
 QString Git::gitCommand() const
@@ -156,6 +170,17 @@ bool Git::git(QString const &arg, bool chdir, bool errout, AbstractPtyProcess *p
 #endif
 	clearResult();
 
+
+	QString env;
+	if (m->ssh_command.isEmpty() || m->ssh_key_override.isEmpty()) {
+		// nop
+	} else {
+		if (m->ssh_command.indexOf('\"') >= 0) return false;
+		if (m->ssh_key_override.indexOf('\"') >= 0) return false;
+		if (!QFileInfo(m->ssh_command).isExecutable()) return false;
+		env = QString("GIT_SSH_COMMAND=\"%1\" -i \"%2\" ").arg(m->ssh_command).arg(m->ssh_key_override);
+	}
+
 	auto DoIt = [&](){
 		QString cmd = QString("\"%1\" --no-pager ").arg(gitCommand());
 		cmd += arg;
@@ -169,7 +194,7 @@ bool Git::git(QString const &arg, bool chdir, bool errout, AbstractPtyProcess *p
 		}
 
 		if (pty) {
-			pty->start(cmd, pty->userVariant());
+			pty->start(cmd, env, pty->userVariant());
 			m->process_exit_code = 0; // バックグラウンドで実行を継続するけど、とりあえず成功したことにしておく
 		} else {
 			Process proc;
@@ -1128,6 +1153,7 @@ void Git::getRemoteURLs(QList<Remote> *out)
 			r.name = line.mid(0, i);
 			r.url = line.mid(i + 1, j - i - 1);
 			r.purpose = line.mid(j + 1);
+			r.ssh_key = m->ssh_key_override;
 			if (r.purpose.startsWith('(') && r.purpose.endsWith(')')) {
 				r.purpose = r.purpose.mid(1, r.purpose.size() - 2);
 			}
@@ -1136,17 +1162,18 @@ void Git::getRemoteURLs(QList<Remote> *out)
 	}
 }
 
-void Git::setRemoteURL(QString const &name, QString const &url)
+void Git::setRemoteURL(Git::Remote const &remote)
 {
 	QString cmd = "remote set-url %1 %2";
-	cmd = cmd.arg(encodeQuotedText(name)).arg(encodeQuotedText(url));
+	cmd = cmd.arg(encodeQuotedText(remote.name)).arg(encodeQuotedText(remote.url));
 	git(cmd);
 }
 
-void Git::addRemoteURL(QString const &name, QString const &url)
+void Git::addRemoteURL(Git::Remote const &remote)
 {
 	QString cmd = "remote add \"%1\" \"%2\"";
-	cmd = cmd.arg(encodeQuotedText(name)).arg(encodeQuotedText(url));
+	cmd = cmd.arg(encodeQuotedText(remote.name)).arg(encodeQuotedText(remote.url));
+	m->ssh_key_override = remote.ssh_key;
 	git(cmd);
 }
 

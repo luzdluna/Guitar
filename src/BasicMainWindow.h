@@ -25,6 +25,7 @@ struct GitHubRepositoryInfo {
 
 class BasicMainWindow : public QMainWindow {
 	Q_OBJECT
+	friend class RepositoryPropertyDialog;
 public:
 	struct Label {
 		enum {
@@ -133,7 +134,7 @@ private:
 	QString tempfileHeader() const;
 	void deleteTempFiles();
 	QString getCommitIdFromTag(QString const &tag);
-	bool isValidRemoteURL(QString const &url);
+	bool isValidRemoteURL(QString const &url, const QString &sshkey);
 	QString getObjectID(QListWidgetItem *item);
 	void addWorkingCopyDir(QString dir, QString name, bool open);
 	static QString makeRepositoryName(QString const &loc);
@@ -157,11 +158,12 @@ protected:
 	void abortPtyProcess();
 
 	bool execWelcomeWizardDialog();
-	void execRepositoryPropertyDialog(QString workdir, bool open_repository_menu = false);
+	void execRepositoryPropertyDialog(const RepositoryItem &repo, bool open_repository_menu = false);
 	void execSetUserDialog(Git::User const &global_user, Git::User const &repo_user, QString const &reponame);
 	void setGitCommand(QString const &path, bool save);
 	void setFileCommand(QString const &path, bool save);
 	void setGpgCommand(QString const &path, bool save);
+	void setSshCommand(QString const &path, bool save);
 	void logGitVersion();
 	void setUnknownRepositoryInfo();
 	void internalClearRepositoryInfo();
@@ -312,7 +314,7 @@ public:
 	WebContext *webContext();
 	QString gitCommand() const;
 	void autoOpenRepository(QString dir);
-	GitPtr git(QString const &dir) const;
+	GitPtr git(QString const &dir, const QString &sshkey = {}) const;
 	GitPtr git();
 	QPixmap getTransparentPixmap();
 	QIcon committerIcon(int row) const;
@@ -321,7 +323,7 @@ public:
 	virtual QString currentWorkingCopyDir() const;
 	const QList<Label> *label(int row) const;
 	bool saveAs(QString const &id, QString const &dstpath);
-	bool testRemoteRepositoryValidity(QString const &url);
+	bool testRemoteRepositoryValidity(QString const &url, const QString &sshkey);
 	QString defaultWorkingDir() const;
 	void addWorkingCopyDir(const QString &dir, bool open);
 	bool queryCommit(QString const &id, Git::CommitItem *out);
@@ -337,6 +339,7 @@ public:
 	QString selectGitCommand(bool save);
 	QString selectFileCommand(bool save);
 	QString selectGpgCommand(bool save);
+	QString selectSshCommand(bool save);
 	Git::Branch const &currentBranch() const;
 	void setCurrentBranch(Git::Branch const &b);
 	const RepositoryItem &currentRepository() const;
@@ -374,6 +377,8 @@ public:
 
 	virtual bool isOnlineMode() const = 0;
 	virtual int selectedLogIndex() const = 0;
+	void changeSshKey(const QString &localdir, const QString &sshkey);
+	void saveApplicationSettings();
 protected slots:
 	void onAvatarUpdated();
 public slots:

@@ -53,7 +53,7 @@ win32:msvc {
 	# OpenSSL 1.0
 	LIBS += -llibeay32 -lssleay32
 	# OpenSSL 1.1
-#	LIBS += -llibcrypto -llibssl
+#    LIBS += -llibcrypto -llibssl
 }
 
 win32:gcc {
@@ -177,6 +177,7 @@ SOURCES += \
 	src/ReadOnlyLineEdit.cpp \
 	src/ReadOnlyPlainTextEdit.cpp \
 	src/ReflogWindow.cpp \
+	src/RemoteAdvancedOptionWidget.cpp \
 	src/RemoteRepositoriesTableWidget.cpp \
 	src/RemoteWatcher.cpp \
 	src/RepositoriesTreeWidget.cpp \
@@ -202,6 +203,7 @@ SOURCES += \
 	src/Terminal.cpp \
 	src/TextEditDialog.cpp \
 	src/Theme.cpp \
+    src/UserEvent.cpp \
 	src/WelcomeWizardDialog.cpp \
 	src/charvec.cpp \
 	src/common/joinpath.cpp \
@@ -293,6 +295,7 @@ HEADERS  += \
 	src/ReadOnlyLineEdit.h \
 	src/ReadOnlyPlainTextEdit.h \
 	src/ReflogWindow.h \
+	src/RemoteAdvancedOptionWidget.h \
 	src/RemoteRepositoriesTableWidget.h \
 	src/RemoteWatcher.h \
 	src/RepositoriesTreeWidget.h \
@@ -318,6 +321,7 @@ HEADERS  += \
 	src/Terminal.h \
 	src/TextEditDialog.h \
 	src/Theme.h \
+	src/UserEvent.h \
 	src/WelcomeWizardDialog.h \
 	src/charvec.h \
 	src/common/joinpath.h \
@@ -376,6 +380,7 @@ FORMS    += \
 	src/ObjectBrowserDialog.ui \
 	src/PushDialog.ui \
 	src/ReflogWindow.ui \
+	src/RemoteAdvancedOptionWidget.ui \
 	src/RepositoryPropertyDialog.ui \
 	src/SearchFromGitHubDialog.ui \
 	src/SelectCommandDialog.ui \

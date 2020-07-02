@@ -56,6 +56,7 @@ public:
 	class Context {
 	public:
 		QString git_command;
+		QString ssh_command;// = "C:/Program Files/Git/usr/bin/ssh.exe";
 	};
 
 	struct Object {
@@ -318,7 +319,7 @@ private:
 	Git();
 	QString encodeQuotedText(QString const &str);
 public:
-	Git(Context const &cx, QString const &repodir);
+	Git(Context const &cx, QString const &repodir, QString const &sshkey = {});
 	Git(Git &&r) = delete;
 	 ~Git() override;
 
@@ -327,7 +328,7 @@ public:
 	void setLogCallback(callback_t func, void *cookie);
 
 	QByteArray toQByteArray() const;
-	void setGitCommand(QString const &path);
+	void setGitCommand(QString const &gitcmd, const QString &sshcmd = {});
 	QString gitCommand() const;
 	void clearResult();
 	QString resultText() const;
@@ -338,8 +339,10 @@ public:
 		return git(arg, true);
 	}
 
-	void setWorkingRepositoryDir(QString const &repo);
+	void setWorkingRepositoryDir(QString const &repo, const QString &sshkey);
 	QString const &workingRepositoryDir() const;
+	QString const &sshKey() const;
+	void setSshKey(const QString &sshkey) const;
 
 	QString getCurrentBranchName();
 	bool isValidWorkingCopy() const;
@@ -394,6 +397,7 @@ public:
 		QString name;
 		QString url;
 		QString purpose;
+		QString ssh_key;
 	};
 
 	QList<DiffRaw> diff_raw(QString const &old_id, QString const &new_id);
@@ -420,8 +424,8 @@ public:
 	QList<Tag> tags2();
 	bool tag(QString const &name, QString const &id = QString());
 	void delete_tag(QString const &name, bool remote);
-	void setRemoteURL(QString const &name, QString const &url);
-	void addRemoteURL(QString const &name, QString const &url);
+	void setRemoteURL(const Remote &remote);
+	void addRemoteURL(const Remote &remote);
 	void removeRemote(QString const &name);
 	QStringList getRemotes();
 
@@ -489,7 +493,6 @@ public:
 	bool stash();
 	bool stash_apply();
 	bool stash_drop();
-
 };
 
 void parseDiff(std::string const &s, Git::Diff const *info, Git::Diff *out);
